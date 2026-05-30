@@ -1,1 +1,8 @@
 .DS_Store
+/target
+/.cargo
+*.log
+*.profraw
+*.profdata
+ferrisledger.db
+ferrisledger.events.jsonl

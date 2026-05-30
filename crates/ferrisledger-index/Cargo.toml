@@ -1,0 +1,17 @@
+[package]
+name = "ferrisledger-index"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ferrisledger-domain = { path = "../ferrisledger-domain" }
+ferrisledger-events = { path = "../ferrisledger-events" }
+ferrisledger-rules = { path = "../ferrisledger-rules" }
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

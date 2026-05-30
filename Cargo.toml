@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/ferrisledger-api",
+  "crates/ferrisledger-cli",
+  "crates/ferrisledger-domain",
+  "crates/ferrisledger-events",
+  "crates/ferrisledger-ffi",
+  "crates/ferrisledger-index",
+  "crates/ferrisledger-macros",
+  "crates/ferrisledger-rules",
+  "crates/ferrisledger-runtime",
+  "crates/ferrisledger-store",
+  "crates/ferrisledger-telemetry",
+  "crates/ferrisledger-test-support",
+  "crates/ferrisledger-worker",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/Defyland/ferrisledger-rust-financial-runtime"
+
+[workspace.dependencies]
+anyhow = "1"
+axum = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+crc32fast = "1"
+criterion = "0.7"
+http = "1"
+http-body-util = "0.1"
+prometheus = "0.14"
+proptest = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+time = { version = "0.3", features = ["formatting", "macros", "serde", "serde-well-known"] }
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "signal", "sync", "time"] }
+tower = { version = "0.5", features = ["util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+all = "deny"

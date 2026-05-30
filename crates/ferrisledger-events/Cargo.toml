@@ -1,0 +1,17 @@
+[package]
+name = "ferrisledger-events"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ferrisledger-domain = { path = "../ferrisledger-domain" }
+serde.workspace = true
+thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

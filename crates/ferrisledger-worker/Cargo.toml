@@ -1,0 +1,23 @@
+[package]
+name = "ferrisledger-worker"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ferrisledger-index = { path = "../ferrisledger-index" }
+ferrisledger-runtime = { path = "../ferrisledger-runtime" }
+ferrisledger-store = { path = "../ferrisledger-store" }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+ferrisledger-domain = { path = "../ferrisledger-domain" }
+ferrisledger-rules = { path = "../ferrisledger-rules" }
+tempfile.workspace = true
+
+[lints]
+workspace = true
