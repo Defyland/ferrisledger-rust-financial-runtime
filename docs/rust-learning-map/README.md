@@ -1,24 +1,17 @@
 # Rust Learning Map
 
-FerrisLedger is designed to connect Rust language features to concrete runtime responsibilities.
+FerrisLedger connects Rust language features to concrete runtime
+responsibilities.
 
-## Planned learning tracks
-
-- `01-ownership.md`
-- `02-lifetimes.md`
-- `03-traits-generics.md`
-- `04-async-tokio.md`
-- `05-concurrency.md`
-- `06-macros.md`
-- `07-unsafe.md`
-- `08-ffi.md`
-- `09-testing.md`
-- `10-benchmarks.md`
-
-Each document should answer:
-
-- Where this concept appears in the project
-- What problem it solves
-- What common mistake showed up
-- What trade-off exists
-- What test proves it works
+| Concept | Where it appears | Why it matters |
+| --- | --- | --- |
+| Ownership | Event envelopes and command payloads move across runtime boundaries | Prevents accidental shared mutation of financial facts |
+| Newtypes | `TenantId`, `AccountId`, `EventId`, `IdempotencyKey` | Avoids mixing domain identifiers |
+| Traits | `EventStore` | Lets storage adapters change without API/rules changes |
+| Generics | `RuntimeService<S>` and `ProjectionWorker<S>` | Keeps services testable against any store implementation |
+| Pattern matching | `RuntimeCommand` and `FinancialEvent` | Makes command/event handling exhaustive |
+| Async | Axum handlers and worker loop | Handles API and projection workflows |
+| Macros | `validated_string_id!` | Removes repetitive ID boilerplate without procedural macro cost |
+| Unsafe | `ferrisledger-ffi` only | Demonstrates a reviewed boundary |
+| Property tests | Money/reservation invariants | Checks financial rules across many amounts |
+| Benchmarks | Criterion replay benchmark | Measures replay cost instead of claiming performance |

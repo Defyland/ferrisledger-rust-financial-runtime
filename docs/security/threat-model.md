@@ -2,39 +2,49 @@
 
 ## Assets
 
-- append-only event log segments
-- event envelopes and schema-versioned payloads
-- snapshots and indexes
-- CLI and API operator actions
-- unsafe and FFI boundaries used for storage or checksum optimization
+- Append-only event log segments.
+- Event envelopes and schema-versioned payloads.
+- Replayed account snapshots and in-memory projections.
+- API keys and operator CLI actions.
+- Unsafe and FFI checksum boundary.
+- Prometheus metrics and structured logs.
 
 ## Actors
 
-- platform operators running CLI maintenance, replay, and verification commands
-- API clients submitting append, read, and replay requests in later phases
-- worker processes rebuilding indexes, snapshots, and projections
-- local developers iterating on unsafe and FFI-backed performance experiments
+- Internal platform clients calling the HTTP API.
+- Platform operators running CLI maintenance, replay, and verification.
+- Worker processes rebuilding indexes from persisted event streams.
+- Developers experimenting with storage and FFI optimizations.
+- Malicious or buggy callers retrying, replaying, or crossing tenant boundaries.
 
 ## Trust boundaries
 
-- HTTP clients and CLI users submit events and replay commands
-- storage readers and writers cross the file-system boundary
-- optional unsafe and FFI modules cross the compiler’s normal safety guarantees
-- async workers rebuild indexes and snapshots from persisted event streams
+- HTTP clients cross into the runtime through `/v1` endpoints.
+- CLI users cross from local shell into the event store.
+- The store crosses the file-system durability boundary.
+- FFI crosses Rust memory-safety guarantees.
+- Metrics and readiness cross into operational monitoring.
 
-## Primary threats
+## Abuse cases and controls
 
 | Threat | Control |
 | --- | --- |
-| Corrupted event log | checksums, crash recovery, and replay verification |
-| Duplicate event append | event ID and stream-level validation |
-| Unsafe memory misuse | quarantine unsafe code, require `SAFETY` comments, and test wrappers |
-| FFI contract mismatch | safe wrapper over `extern \"C\"` boundary and focused tests |
-| Replay divergence | property tests, snapshot verification, and deterministic event ordering |
-| Unauthorized mutation | authenticated API or CLI boundaries in later phases and audit logging of operator actions |
+| Missing or wrong API key | Reject `/v1` requests with `401` |
+| API key abuse or accidental loops | In-process rolling-window rate limit returns `429` |
+| Cross-tenant read/BOLA | Stream ID includes tenant ID and API tests cover tenant mismatch |
+| Duplicate command retry | Idempotency key lookup returns original event |
+| Corrupted event log | CRC32 checksums, JSON decoding, readiness verification |
+| Replay divergence | Deterministic rules and projection tests |
+| Unsafe memory misuse | FFI isolated to one crate with `SAFETY` comments and tests |
+| Sensitive Pix key logging | Structured logs exclude request payload values |
+| Stale stream append | Expected stream version check |
 
 ## Residual risks
 
-- Unsafe and FFI are intentionally deferred to narrow modules and are not part of the phase 0 runtime.
-- Event Store semantics are central to the product, so schema evolution and snapshot compatibility remain ongoing design risks.
-- External metadata stores and distributed deployment are deferred behind feature flags.
+- CRC32 is not cryptographic tamper proofing.
+- Static API keys are not sufficient outside trusted internal networks.
+- In-process rate limiting does not protect multiple replicas without a shared
+  limiter such as Redis.
+- JSONL is single-writer and not a production-grade shared database.
+- Metrics/readiness are public in local mode and should be restricted at ingress
+  in production.

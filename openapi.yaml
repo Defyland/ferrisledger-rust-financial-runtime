@@ -1,0 +1,456 @@
+openapi: 3.1.0
+info:
+  title: FerrisLedger API
+  version: 1.0.0
+  summary: Append-only financial event runtime API.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://api.ferrisledger.local
+security:
+  - ApiKeyAuth: []
+paths:
+  /healthz:
+    get:
+      security: []
+      operationId: getHealth
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Runtime is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+  /readyz:
+    get:
+      security: []
+      operationId: getReadiness
+      summary: Readiness and event-log verification
+      responses:
+        "200":
+          description: Event store can be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreVerification"
+        "400":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+  /metrics:
+    get:
+      security: []
+      operationId: getMetrics
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Prometheus text exposition.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Error"
+  /v1/accounts:
+    post:
+      operationId: openAccount
+      summary: Open an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenAccountRequest"
+            examples:
+              standard:
+                value:
+                  tenant_id: tenant_001
+                  account_id: account_001
+                  currency: BRL
+                  account_holder_name: Ada Lovelace
+                  correlation_id: corr_001
+      responses:
+        "200":
+          $ref: "#/components/responses/CommandOutcome"
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /v1/accounts/{account_id}/events:
+    get:
+      operationId: listAccountEvents
+      summary: Read account events
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Account events in append order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventEnvelope"
+        "401":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /v1/accounts/{account_id}/snapshot:
+    get:
+      operationId: getAccountSnapshot
+      summary: Replay account snapshot
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Replayed account state, or null when stream is absent.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AccountState"
+                  - type: "null"
+        "401":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /v1/accounts/{account_id}/deposits:
+    post:
+      operationId: depositMoney
+      summary: Deposit money
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      requestBody:
+        $ref: "#/components/requestBodies/MoneyMovement"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommandOutcome"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /v1/accounts/{account_id}/pix-transfers:
+    post:
+      operationId: requestPixTransfer
+      summary: Reserve funds for an outgoing Pix transfer
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PixTransferRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommandOutcome"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /v1/accounts/{account_id}/settlements:
+    post:
+      operationId: executeSettlement
+      summary: Execute settlement for reserved transfer funds
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettlementRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommandOutcome"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /v1/accounts/{account_id}/ledger-entries:
+    post:
+      operationId: createLedgerEntry
+      summary: Create ledger evidence
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LedgerEntryRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommandOutcome"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+  parameters:
+    AccountId:
+      name: account_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: account_001
+    TenantId:
+      name: tenant_id
+      in: query
+      required: true
+      schema:
+        type: string
+      example: tenant_001
+  requestBodies:
+    MoneyMovement:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MoneyMovementRequest"
+          examples:
+            deposit:
+              value:
+                tenant_id: tenant_001
+                amount_cents: 2500
+                currency: BRL
+                idempotency_key: deposit_001
+                correlation_id: corr_002
+  responses:
+    CommandOutcome:
+      description: Command accepted or idempotently replayed.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/RequestId"
+        x-correlation-id:
+          $ref: "#/components/headers/CorrelationId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommandOutcome"
+    Error:
+      description: Standard error payload.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/RequestId"
+        x-correlation-id:
+          $ref: "#/components/headers/CorrelationId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  headers:
+    RequestId:
+      description: Request identifier supplied by `x-request-id` or generated by the API.
+      schema:
+        type: string
+    CorrelationId:
+      description: Correlation identifier supplied by command payload or `x-correlation-id`.
+      schema:
+        type: string
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+    StoreVerification:
+      type: object
+      required: [records, streams]
+      properties:
+        records:
+          type: integer
+          minimum: 0
+        streams:
+          type: integer
+          minimum: 0
+    OpenAccountRequest:
+      type: object
+      required: [tenant_id, account_id, currency, account_holder_name, correlation_id]
+      properties:
+        tenant_id:
+          type: string
+        account_id:
+          type: string
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        account_holder_name:
+          type: string
+        correlation_id:
+          type: string
+    MoneyMovementRequest:
+      type: object
+      required: [tenant_id, amount_cents, currency, idempotency_key, correlation_id]
+      properties:
+        tenant_id:
+          type: string
+        amount_cents:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+        idempotency_key:
+          type: string
+        correlation_id:
+          type: string
+    PixTransferRequest:
+      allOf:
+        - $ref: "#/components/schemas/MoneyMovementRequest"
+        - type: object
+          required: [beneficiary_pix_key]
+          properties:
+            beneficiary_pix_key:
+              type: string
+    SettlementRequest:
+      allOf:
+        - $ref: "#/components/schemas/MoneyMovementRequest"
+        - type: object
+          required: [settlement_id]
+          properties:
+            settlement_id:
+              type: string
+    LedgerEntryRequest:
+      allOf:
+        - $ref: "#/components/schemas/MoneyMovementRequest"
+        - type: object
+          required: [ledger_entry_id, direction, reason]
+          properties:
+            ledger_entry_id:
+              type: string
+            direction:
+              type: string
+              enum: [credit, debit]
+            reason:
+              type: string
+            related_event_id:
+              type: [string, "null"]
+    CommandOutcome:
+      type: object
+      required: [event, stream_version, global_position, idempotent_replay]
+      properties:
+        event:
+          $ref: "#/components/schemas/EventEnvelope"
+        stream_version:
+          type: integer
+        global_position:
+          type: [integer, "null"]
+        idempotent_replay:
+          type: boolean
+    EventEnvelope:
+      type: object
+      required:
+        - event_id
+        - event_type
+        - stream_id
+        - tenant_id
+        - correlation_id
+        - schema_version
+        - occurred_at
+        - producer
+        - payload
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+          enum:
+            - account_opened
+            - money_deposited
+            - pix_transfer_requested
+            - settlement_executed
+            - ledger_entry_created
+        stream_id:
+          type: string
+        tenant_id:
+          type: string
+        correlation_id:
+          type: string
+        causation_id:
+          type: [string, "null"]
+        schema_version:
+          type: integer
+          const: 1
+        occurred_at:
+          type: string
+          format: date-time
+        producer:
+          type: string
+        payload:
+          type: object
+    AccountState:
+      type: object
+      required: [tenant_id, account_id, status, balance, pending_pix_out, version]
+      properties:
+        tenant_id:
+          type: string
+        account_id:
+          type: string
+        status:
+          type: string
+          enum: [open, frozen, closed]
+        balance:
+          $ref: "#/components/schemas/Money"
+        pending_pix_out:
+          $ref: "#/components/schemas/Money"
+        version:
+          type: integer
+    Money:
+      type: object
+      required: [cents, currency]
+      properties:
+        cents:
+          type: integer
+        currency:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: [string, "null"]
+            correlation_id:
+              type: [string, "null"]

@@ -1,14 +1,17 @@
 # FerrisLedger Event Contracts
 
-FerrisLedger stores financial events as append-only runtime facts. Event envelopes are versioned because replay, snapshots, rules, and external consumers depend on stable event shape.
+FerrisLedger stores financial facts as immutable event envelopes. Replay,
+readiness verification, projections, and future consumers all depend on stable
+event shape.
 
 ## Envelope
 
-Every event must include:
+Every event includes:
 
 - `event_id`
 - `event_type`
 - `stream_id`
+- `tenant_id`
 - `correlation_id`
 - `causation_id`
 - `schema_version`
@@ -16,21 +19,32 @@ Every event must include:
 - `producer`
 - `payload`
 
+`stream_id` is derived from `tenant_id + account_id`, making tenant partitioning
+explicit in the event contract.
+
 ## Compatibility policy
 
-- Consumers must deduplicate by `event_id` and tolerate at-least-once delivery.
-- Replays must preserve the original `event_id`, `stream_id`, and causal metadata.
-- New fields must be optional until all readers can tolerate them.
-- Required fields must not change semantics without a new schema version.
-- Event payload decoding errors must never silently skip records in a stream.
-- Snapshot reconstruction must remain compatible with historical envelopes.
+- Consumers deduplicate by `event_id`.
+- Producers use idempotency keys for repeatable external commands.
+- Replays preserve original event IDs and causal metadata.
+- New fields must be optional until all readers tolerate them.
+- Required field semantics must not change without a new version.
+- Event decoding or checksum errors must fail replay, not silently skip records.
 
-## Producer and consumer expectations
+## Producer responsibilities
 
-- Producers append events only after domain validation and checksum generation succeed.
-- Rebuild, replay, and snapshot jobs must propagate the original `correlation_id` for traceability.
-- Consumers must treat events as immutable facts and record replay or projection state separately.
-- Unsafe or FFI-backed optimizations must not change the logical event contract seen by readers.
+- Validate domain rules before append.
+- Compute and persist checksum with the envelope.
+- Propagate `correlation_id`.
+- Use expected stream version for optimistic concurrency.
+
+## Consumer responsibilities
+
+- Treat events as immutable facts.
+- Track projection offsets separately.
+- Expect duplicate delivery in future broker/outbox integrations.
+- Send failed messages to a dead-letter process when asynchronous delivery is
+  added.
 
 ## Versioned schemas
 

@@ -1,18 +1,38 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Defyland/ferrisledger-rust-financial-runtime/docs/events/account_opened.v1.json",
-  "title": "AccountOpened v1",
+  "title": "account_opened v1",
   "type": "object",
-  "required": ["event_id", "stream_id", "correlation_id", "schema_version", "occurred_at", "producer", "payload"],
+  "required": ["event_id", "event_type", "stream_id", "tenant_id", "correlation_id", "schema_version", "occurred_at", "producer", "payload"],
   "properties": {
     "event_id": { "type": "string" },
+    "event_type": { "const": "account_opened" },
     "stream_id": { "type": "string" },
+    "tenant_id": { "type": "string" },
     "correlation_id": { "type": "string" },
     "causation_id": { "type": ["string", "null"] },
     "schema_version": { "type": "integer", "const": 1 },
     "occurred_at": { "type": "string", "format": "date-time" },
     "producer": { "type": "string", "const": "ferrisledger" },
-    "payload": { "type": "object" }
+    "payload": {
+      "type": "object",
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": { "const": "account_opened" },
+        "data": {
+          "type": "object",
+          "required": ["tenant_id", "account_id", "currency", "account_holder_name"],
+          "properties": {
+            "tenant_id": { "type": "string" },
+            "account_id": { "type": "string" },
+            "currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+            "account_holder_name": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }
