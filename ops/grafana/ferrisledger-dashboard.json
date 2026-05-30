@@ -1,0 +1,42 @@
+{
+  "title": "FerrisLedger Runtime",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP requests",
+      "targets": [
+        {
+          "expr": "sum by (method, path, status) (rate(ferrisledger_http_requests_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Runtime commands",
+      "targets": [
+        {
+          "expr": "sum by (command, result) (rate(ferrisledger_runtime_commands_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Rate-limited requests",
+      "targets": [
+        {
+          "expr": "ferrisledger_api_rate_limited_total"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Event store records",
+      "targets": [
+        {
+          "expr": "ferrisledger_event_store_records"
+        }
+      ]
+    }
+  ]
+}
