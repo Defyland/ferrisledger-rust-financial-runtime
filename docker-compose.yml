@@ -1,0 +1,16 @@
+services:
+  ferrisledger:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      FERRISLEDGER_API_KEY: dev-secret
+      FERRISLEDGER_STORE_PATH: /data/events.jsonl
+      FERRISLEDGER_RATE_LIMIT_PER_MINUTE: "120"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "ferrisledger", "verify", "--store-path", "/data/events.jsonl"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
