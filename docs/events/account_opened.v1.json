@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Defyland/ferrisledger-rust-financial-runtime/docs/events/account_opened.v1.json",
+  "title": "AccountOpened v1",
+  "type": "object",
+  "required": ["event_id", "stream_id", "correlation_id", "schema_version", "occurred_at", "producer", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "stream_id": { "type": "string" },
+    "correlation_id": { "type": "string" },
+    "causation_id": { "type": ["string", "null"] },
+    "schema_version": { "type": "integer", "const": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string", "const": "ferrisledger" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}
