@@ -279,12 +279,32 @@ pub struct LedgerEntryCreated {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferrisledger_domain::{AccountId, CorrelationId, TenantId, account_stream_id};
+    use ferrisledger_domain::{
+        AccountId, CorrelationId, EventId, IdempotencyKey, LedgerEntryId, Money, SettlementId,
+        TenantId, account_stream_id,
+    };
+    use serde_json::json;
+
+    fn tenant_id() -> TenantId {
+        TenantId::new("tenant_001").expect("tenant")
+    }
+
+    fn account_id() -> AccountId {
+        AccountId::new("account_001").expect("account")
+    }
+
+    fn money(cents: i64) -> Money {
+        Money::new(cents, "BRL").expect("money")
+    }
+
+    fn idempotency_key(value: &str) -> IdempotencyKey {
+        IdempotencyKey::new(value).expect("idempotency")
+    }
 
     #[test]
     fn envelope_event_type_matches_payload() {
-        let tenant_id = TenantId::new("tenant_001").expect("tenant");
-        let account_id = AccountId::new("account_001").expect("account");
+        let tenant_id = tenant_id();
+        let account_id = account_id();
         let payload = FinancialEvent::AccountOpened(AccountOpened {
             tenant_id: tenant_id.clone(),
             account_id: account_id.clone(),
@@ -301,5 +321,159 @@ mod tests {
         assert_eq!(envelope.event_type, EventType::AccountOpened);
         assert_eq!(envelope.schema_version, 1);
         assert_eq!(envelope.producer, "ferrisledger");
+    }
+
+    #[test]
+    fn serializes_financial_event_payload_contracts() {
+        let tenant_id = tenant_id();
+        let account_id = account_id();
+        let cases = vec![
+            (
+                FinancialEvent::AccountOpened(AccountOpened {
+                    tenant_id: tenant_id.clone(),
+                    account_id: account_id.clone(),
+                    currency: "BRL".to_string(),
+                    account_holder_name: "Ada Lovelace".to_string(),
+                }),
+                json!({
+                    "kind": "account_opened",
+                    "data": {
+                        "tenant_id": "tenant_001",
+                        "account_id": "account_001",
+                        "currency": "BRL",
+                        "account_holder_name": "Ada Lovelace"
+                    }
+                }),
+            ),
+            (
+                FinancialEvent::MoneyDeposited(MoneyDeposited {
+                    tenant_id: tenant_id.clone(),
+                    account_id: account_id.clone(),
+                    amount: money(2_500),
+                    idempotency_key: idempotency_key("idem_deposit_001"),
+                }),
+                json!({
+                    "kind": "money_deposited",
+                    "data": {
+                        "tenant_id": "tenant_001",
+                        "account_id": "account_001",
+                        "amount": {
+                            "cents": 2500,
+                            "currency": "BRL"
+                        },
+                        "idempotency_key": "idem_deposit_001"
+                    }
+                }),
+            ),
+            (
+                FinancialEvent::PixTransferRequested(PixTransferRequested {
+                    tenant_id: tenant_id.clone(),
+                    account_id: account_id.clone(),
+                    amount: money(1_200),
+                    beneficiary_pix_key: "pix-key@example.test".to_string(),
+                    idempotency_key: idempotency_key("idem_pix_001"),
+                }),
+                json!({
+                    "kind": "pix_transfer_requested",
+                    "data": {
+                        "tenant_id": "tenant_001",
+                        "account_id": "account_001",
+                        "amount": {
+                            "cents": 1200,
+                            "currency": "BRL"
+                        },
+                        "beneficiary_pix_key": "pix-key@example.test",
+                        "idempotency_key": "idem_pix_001"
+                    }
+                }),
+            ),
+            (
+                FinancialEvent::SettlementExecuted(SettlementExecuted {
+                    tenant_id: tenant_id.clone(),
+                    account_id: account_id.clone(),
+                    amount: money(1_200),
+                    settlement_id: SettlementId::new("settlement_001").expect("settlement"),
+                    idempotency_key: idempotency_key("idem_settlement_001"),
+                }),
+                json!({
+                    "kind": "settlement_executed",
+                    "data": {
+                        "tenant_id": "tenant_001",
+                        "account_id": "account_001",
+                        "amount": {
+                            "cents": 1200,
+                            "currency": "BRL"
+                        },
+                        "settlement_id": "settlement_001",
+                        "idempotency_key": "idem_settlement_001"
+                    }
+                }),
+            ),
+            (
+                FinancialEvent::LedgerEntryCreated(LedgerEntryCreated {
+                    tenant_id: tenant_id.clone(),
+                    account_id: account_id.clone(),
+                    ledger_entry_id: LedgerEntryId::new("ledger_001").expect("ledger"),
+                    direction: LedgerDirection::Credit,
+                    amount: money(2_500),
+                    reason: "deposit booking".to_string(),
+                    idempotency_key: idempotency_key("idem_ledger_001"),
+                    related_event_id: Some(EventId::new("event_001").expect("event")),
+                }),
+                json!({
+                    "kind": "ledger_entry_created",
+                    "data": {
+                        "tenant_id": "tenant_001",
+                        "account_id": "account_001",
+                        "ledger_entry_id": "ledger_001",
+                        "direction": "credit",
+                        "amount": {
+                            "cents": 2500,
+                            "currency": "BRL"
+                        },
+                        "reason": "deposit booking",
+                        "idempotency_key": "idem_ledger_001",
+                        "related_event_id": "event_001"
+                    }
+                }),
+            ),
+        ];
+
+        for (event, expected) in cases {
+            assert_eq!(serde_json::to_value(event).expect("json"), expected);
+        }
+    }
+
+    #[test]
+    fn envelope_serializes_with_redundant_event_type_and_typed_payload() {
+        let tenant_id = tenant_id();
+        let account_id = account_id();
+        let payload = FinancialEvent::AccountOpened(AccountOpened {
+            tenant_id: tenant_id.clone(),
+            account_id: account_id.clone(),
+            currency: "BRL".to_string(),
+            account_holder_name: "Ada Lovelace".to_string(),
+        });
+        let metadata = EventMetadata {
+            stream_id: account_stream_id(&tenant_id, &account_id).expect("stream"),
+            correlation_id: CorrelationId::new("corr_001").expect("correlation"),
+            causation_id: None,
+            occurred_at: OffsetDateTime::from_unix_timestamp(1_704_067_200).expect("timestamp"),
+            producer: "ferrisledger-test".to_string(),
+        };
+
+        let envelope = EventEnvelope::new(payload, metadata).expect("envelope");
+        let value = serde_json::to_value(envelope).expect("json");
+
+        assert_eq!(value["event_type"], "account_opened");
+        assert_eq!(value["stream_id"], "tenant:tenant_001:account:account_001");
+        assert_eq!(value["tenant_id"], "tenant_001");
+        assert_eq!(value["correlation_id"], "corr_001");
+        assert_eq!(value["schema_version"], 1);
+        assert_eq!(value["occurred_at"], "2024-01-01T00:00:00Z");
+        assert_eq!(value["producer"], "ferrisledger-test");
+        assert_eq!(value["payload"]["kind"], "account_opened");
+        assert_eq!(value["payload"]["data"]["account_id"], "account_001");
+        assert!(value["event_id"].as_str().is_some_and(|id| !id.is_empty()));
     }
 }
