@@ -5,7 +5,7 @@
 ```bash
 curl -s http://localhost:8080/v1/accounts \
   -H 'content-type: application/json' \
-  -H 'x-api-key: dev-secret' \
+  -H 'x-api-key: dev-secret-local' \
   -d '{
     "tenant_id": "tenant_001",
     "account_id": "account_001",
@@ -20,7 +20,7 @@ curl -s http://localhost:8080/v1/accounts \
 ```bash
 curl -s http://localhost:8080/v1/accounts/account_001/deposits \
   -H 'content-type: application/json' \
-  -H 'x-api-key: dev-secret' \
+  -H 'x-api-key: dev-secret-local' \
   -d '{
     "tenant_id": "tenant_001",
     "amount_cents": 2500,
@@ -34,5 +34,5 @@ curl -s http://localhost:8080/v1/accounts/account_001/deposits \
 
 ```bash
 curl -s 'http://localhost:8080/v1/accounts/account_001/snapshot?tenant_id=tenant_001' \
-  -H 'x-api-key: dev-secret'
+  -H 'x-api-key: dev-secret-local'
 ```

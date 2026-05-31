@@ -29,8 +29,8 @@
 
 | Threat | Control |
 | --- | --- |
-| Missing or wrong API key | Reject `/v1` requests with `401` |
-| API key abuse or accidental loops | In-process rolling-window rate limit returns `429` |
+| Missing or wrong API key | Reject `/v1` requests with `401`, validate configured key strength at startup, compare keys without data-dependent early exit, and throttle repeated auth failures |
+| API key abuse or accidental loops | In-process rolling-window rate limit returns `429` for authenticated requests |
 | Cross-tenant read/BOLA | Stream ID includes tenant ID and API tests cover tenant mismatch |
 | Duplicate command retry | Same idempotency key and same command semantics return original event |
 | Idempotency key confusion | Global idempotency-key lookup returns `409` on incompatible reuse across command type, amount, currency, account, tenant, settlement/ledger ID, beneficiary, reason, or related event |

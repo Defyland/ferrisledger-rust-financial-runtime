@@ -13,7 +13,7 @@ management model and causes container scanners to flag the image.
 
 ## Options considered
 
-1. Keep `dev-secret` as the CLI and container default
+1. Keep `dev-secret-local` as the CLI and container default
 2. Keep a Docker image default but require an explicit CLI key
 3. Require `--api-key` or `FERRISLEDGER_API_KEY` at runtime
 

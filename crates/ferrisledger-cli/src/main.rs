@@ -44,6 +44,13 @@ enum Commands {
             default_value_t = 120
         )]
         rate_limit_per_minute: u32,
+        /// Unauthenticated or invalid-key requests allowed per rolling minute.
+        #[arg(
+            long,
+            env = "FERRISLEDGER_AUTH_FAILURE_RATE_LIMIT_PER_MINUTE",
+            default_value_t = 60
+        )]
+        auth_failure_rate_limit_per_minute: u32,
     },
     /// Open an account.
     OpenAccount(AccountArgs),
@@ -176,10 +183,12 @@ async fn main() -> anyhow::Result<()> {
             store_path,
             api_key,
             rate_limit_per_minute,
+            auth_failure_rate_limit_per_minute,
         } => {
             let app = router(
                 ApiConfig::new(store_path, api_key)
-                    .with_rate_limit_per_minute(rate_limit_per_minute),
+                    .with_rate_limit_per_minute(rate_limit_per_minute)
+                    .with_auth_failure_rate_limit_per_minute(auth_failure_rate_limit_per_minute),
             )?;
             tracing::info!(%bind, "starting ferrisledger api");
             let listener = tokio::net::TcpListener::bind(bind).await?;

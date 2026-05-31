@@ -12,7 +12,7 @@ export const options = {
 };
 
 const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
-const apiKey = __ENV.API_KEY || 'dev-secret';
+const apiKey = __ENV.API_KEY || 'dev-secret-local';
 
 export default function () {
   const accountId = `smoke_${Date.now()}_${__VU}_${__ITER}`;

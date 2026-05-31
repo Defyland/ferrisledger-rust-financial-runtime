@@ -46,7 +46,8 @@ events.
 - Deterministic replay into account snapshots and in-memory projections.
 - Idempotency keys for repeatable financial commands, with `409` conflict on
   incompatible key reuse.
-- In-process API-key rate limiting for local abuse protection.
+- API-key validation plus separate in-process rate limits for authenticated
+  traffic and repeated authentication failures.
 - Prometheus metrics, structured JSON tracing, health and readiness endpoints.
 - Property tests, API tests, corruption tests, auth tests, worker tests, and a
   Criterion replay benchmark.
@@ -140,9 +141,11 @@ Dashboard and alert assets live under [`ops/`](ops).
 
 All `/v1` endpoints require `x-api-key`. Tenant ID is part of the stream ID, so
 account IDs are not globally sufficient to read another tenant's events.
-Authenticated requests are rate-limited per API key in-process. Sensitive state
-is kept out of logs. Secrets are provided by environment variables and
-documented in [`docs/security`](docs/security).
+Configured API keys are validated at startup, compared without data-dependent
+early exit, and authenticated requests are rate-limited per API key in-process.
+Missing or invalid API-key attempts have a separate local rolling-window limit.
+Sensitive state is kept out of logs. Secrets are provided by environment
+variables and documented in [`docs/security`](docs/security).
 
 ## 15. Trade-offs and decisions
 
@@ -161,14 +164,14 @@ documented in [`docs/security`](docs/security).
 cargo run -p ferrisledger-cli -- serve \
   --bind 127.0.0.1:8080 \
   --store-path data/events.jsonl \
-  --api-key dev-secret \
+  --api-key dev-secret-local \
   --rate-limit-per-minute 120
 ```
 
 Docker:
 
 ```bash
-FERRISLEDGER_API_KEY=dev-secret docker compose up --build
+FERRISLEDGER_API_KEY=dev-secret-local docker compose up --build
 ```
 
 ## 17. How to run tests

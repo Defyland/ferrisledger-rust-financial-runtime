@@ -37,6 +37,8 @@ pub struct ApiConfig {
     pub api_key: String,
     /// Maximum authenticated requests per API key per rolling minute.
     pub rate_limit_per_minute: u32,
+    /// Maximum unauthenticated or invalid-key requests per rolling minute.
+    pub auth_failure_rate_limit_per_minute: u32,
 }
 
 impl ApiConfig {
@@ -47,6 +49,7 @@ impl ApiConfig {
             store_path: store_path.into(),
             api_key: api_key.into(),
             rate_limit_per_minute: 120,
+            auth_failure_rate_limit_per_minute: 60,
         }
     }
 
@@ -54,6 +57,16 @@ impl ApiConfig {
     #[must_use]
     pub const fn with_rate_limit_per_minute(mut self, rate_limit_per_minute: u32) -> Self {
         self.rate_limit_per_minute = rate_limit_per_minute;
+        self
+    }
+
+    /// Overrides the default local authentication-failure rate limit.
+    #[must_use]
+    pub const fn with_auth_failure_rate_limit_per_minute(
+        mut self,
+        auth_failure_rate_limit_per_minute: u32,
+    ) -> Self {
+        self.auth_failure_rate_limit_per_minute = auth_failure_rate_limit_per_minute;
         self
     }
 }
@@ -65,16 +78,21 @@ pub struct AppState {
     telemetry: Telemetry,
     api_key: String,
     rate_limiter: Arc<Mutex<RateLimiter>>,
+    auth_failure_rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
 impl AppState {
     /// Creates application state.
     pub fn new(config: ApiConfig) -> Result<Self, ApiError> {
+        validate_api_key(&config.api_key)?;
         Ok(Self {
             runtime: RuntimeService::file(config.store_path),
             telemetry: Telemetry::new()?,
             api_key: config.api_key,
             rate_limiter: Arc::new(Mutex::new(RateLimiter::new(config.rate_limit_per_minute))),
+            auth_failure_rate_limiter: Arc::new(Mutex::new(RateLimiter::new(
+                config.auth_failure_rate_limit_per_minute,
+            ))),
         })
     }
 }
@@ -397,10 +415,12 @@ fn authorize(
         .get("x-api-key")
         .and_then(|value| value.to_str().ok())
     else {
+        enforce_auth_failure_limit(state, context)?;
         return Err(ApiError::unauthorized().with_context(context));
     };
 
-    if api_key != state.api_key {
+    if !constant_time_eq(api_key.as_bytes(), state.api_key.as_bytes()) {
+        enforce_auth_failure_limit(state, context)?;
         return Err(ApiError::unauthorized().with_context(context));
     }
 
@@ -415,6 +435,47 @@ fn authorize(
 
     state.telemetry.observe_rate_limited();
     Err(ApiError::rate_limited().with_context(context))
+}
+
+fn validate_api_key(api_key: &str) -> Result<(), ApiError> {
+    let valid = api_key.len() >= 12
+        && api_key.len() <= 256
+        && api_key.trim() == api_key
+        && api_key.chars().all(|ch| ch.is_ascii_graphic());
+    if valid {
+        return Ok(());
+    }
+    Err(ApiError::configuration(
+        "api key must be 12-256 visible ASCII characters without whitespace",
+    ))
+}
+
+fn enforce_auth_failure_limit(
+    state: &AppState,
+    context: &RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    if state
+        .auth_failure_rate_limiter
+        .lock()
+        .expect("auth failure rate limiter lock poisoned")
+        .allow("unauthorized")
+    {
+        return Ok(());
+    }
+
+    state.telemetry.observe_rate_limited();
+    Err(ApiError::rate_limited().with_context(context))
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    let max_len = left.len().max(right.len());
+    let mut diff = left.len() ^ right.len();
+    for index in 0..max_len {
+        let left_byte = left.get(index).copied().unwrap_or(0);
+        let right_byte = right.get(index).copied().unwrap_or(0);
+        diff |= usize::from(left_byte ^ right_byte);
+    }
+    diff == 0
 }
 
 #[derive(Clone, Debug)]
@@ -483,6 +544,9 @@ pub enum ApiError {
     /// Request validation failed.
     #[error("bad request: {0}")]
     BadRequest(String),
+    /// Runtime configuration is invalid.
+    #[error("configuration error: {0}")]
+    Configuration(String),
 }
 
 impl ApiError {
@@ -496,6 +560,10 @@ impl ApiError {
 
     fn bad_request(message: impl Into<String>) -> Self {
         Self::BadRequest(message.into())
+    }
+
+    fn configuration(message: impl Into<String>) -> Self {
+        Self::Configuration(message.into())
     }
 
     fn status(&self) -> StatusCode {
@@ -513,7 +581,7 @@ impl ApiError {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             Self::Runtime(error) => status_for_runtime_error(error),
-            Self::Telemetry(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Telemetry(_) | Self::Configuration(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -545,6 +613,7 @@ impl ApiError {
             }
             Self::Runtime(_) => "runtime_error",
             Self::Telemetry(_) => "telemetry_error",
+            Self::Configuration(_) => "configuration_error",
         }
     }
 
@@ -795,17 +864,28 @@ mod tests {
     use serde_json::json;
     use tower::ServiceExt;
 
+    const API_KEY: &str = "dev-secret-local";
+
     fn test_router() -> Router {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.keep().join("events.jsonl");
-        router(ApiConfig::new(path, "secret")).expect("router")
+        router(ApiConfig::new(path, API_KEY)).expect("router")
     }
 
     fn rate_limited_router(max_per_minute: u32) -> Router {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.keep().join("events.jsonl");
-        router(ApiConfig::new(path, "secret").with_rate_limit_per_minute(max_per_minute))
+        router(ApiConfig::new(path, API_KEY).with_rate_limit_per_minute(max_per_minute))
             .expect("router")
+    }
+
+    fn auth_failure_rate_limited_router(max_per_minute: u32) -> Router {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.keep().join("events.jsonl");
+        router(
+            ApiConfig::new(path, API_KEY).with_auth_failure_rate_limit_per_minute(max_per_minute),
+        )
+        .expect("router")
     }
 
     async fn post_json(
@@ -814,6 +894,31 @@ mod tests {
         body: serde_json::Value,
     ) -> (StatusCode, serde_json::Value) {
         let (status, _headers, value) = post_json_with_request_id(app, uri, body, None).await;
+        (status, value)
+    }
+
+    async fn post_json_with_api_key(
+        app: Router,
+        uri: &str,
+        body: serde_json::Value,
+        api_key: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(api_key) = api_key {
+            builder = builder.header("x-api-key", api_key);
+        }
+        let response = app
+            .oneshot(builder.body(Body::from(body.to_string())).expect("request"))
+            .await
+            .expect("response");
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let value = serde_json::from_slice(&bytes).expect("json");
         (status, value)
     }
 
@@ -827,7 +932,7 @@ mod tests {
             .method("POST")
             .uri(uri)
             .header(header::CONTENT_TYPE, "application/json")
-            .header("x-api-key", "secret");
+            .header("x-api-key", API_KEY);
         if let Some(request_id) = request_id {
             builder = builder.header("x-request-id", request_id);
         }
@@ -850,7 +955,7 @@ mod tests {
                 Request::builder()
                     .method("GET")
                     .uri(uri)
-                    .header("x-api-key", "secret")
+                    .header("x-api-key", API_KEY)
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -880,6 +985,17 @@ mod tests {
         assert_eq!(value["event"]["event_type"], "account_opened");
     }
 
+    #[test]
+    fn rejects_weak_runtime_api_key_configuration() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("events.jsonl");
+
+        assert!(matches!(
+            router(ApiConfig::new(path, "short")),
+            Err(ApiError::Configuration(_))
+        ));
+    }
+
     #[tokio::test]
     async fn rejects_missing_api_key() {
         let app = test_router();
@@ -905,6 +1021,33 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn rate_limits_repeated_authentication_failures() {
+        let app = auth_failure_rate_limited_router(1);
+        let body = json!({
+            "tenant_id": "tenant_001",
+            "account_id": "account_001",
+            "currency": "BRL",
+            "account_holder_name": "Ada Lovelace",
+            "correlation_id": "corr_001"
+        });
+
+        let first = post_json_with_api_key(
+            app.clone(),
+            "/v1/accounts",
+            body.clone(),
+            Some("wrong-secret-one"),
+        )
+        .await;
+        let second =
+            post_json_with_api_key(app, "/v1/accounts", body, Some("wrong-secret-two")).await;
+
+        assert_eq!(first.0, StatusCode::UNAUTHORIZED);
+        assert_eq!(first.1["error"]["code"], "unauthorized");
+        assert_eq!(second.0, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(second.1["error"]["code"], "rate_limited");
     }
 
     #[tokio::test]

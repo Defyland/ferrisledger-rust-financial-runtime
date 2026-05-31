@@ -13,6 +13,10 @@ x-api-key: <local-api-key>
 Health, readiness, and metrics are public in local mode. Production should
 protect metrics and readiness at ingress.
 
+The runtime rejects weak configured API keys at startup. Local keys must be
+12-256 visible ASCII characters without whitespace. Authenticated requests and
+authentication failures use separate in-process rolling-window rate limits.
+
 Callers may send `x-request-id`; when it is absent the API generates one.
 Command audit logs and HTTP responses include request and correlation context.
 
@@ -38,7 +42,8 @@ Stable error codes include `unauthorized`, `bad_request`,
 `idempotency_conflict`, `version_conflict`, and `event_log_corrupt`.
 
 `rate_limited` is returned with HTTP `429` when an authenticated API key exceeds
-the configured rolling-window request limit.
+the configured rolling-window request limit or when repeated missing/invalid
+API-key attempts exceed the separate auth-failure limit.
 
 Repeatable command endpoints replay the original event only when the reused
 idempotency key matches the same command semantics. Reusing a key with different

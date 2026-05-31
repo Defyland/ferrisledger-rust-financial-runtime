@@ -7,8 +7,8 @@ metrics, tests, Dockerfile, Docker Compose file, and CI workflow.
 
 ## Ready for local operation
 
-- `cargo run -p ferrisledger-cli --bin ferrisledger -- serve --api-key dev-secret`
-- `FERRISLEDGER_API_KEY=dev-secret docker compose up --build`
+- `cargo run -p ferrisledger-cli --bin ferrisledger -- serve --api-key dev-secret-local`
+- `FERRISLEDGER_API_KEY=dev-secret-local docker compose up --build`
 - `/healthz`, `/readyz`, `/metrics`
 - `ferrisledger verify --store-path data/events.jsonl`
 
@@ -17,6 +17,8 @@ metrics, tests, Dockerfile, Docker Compose file, and CI workflow.
 - JSONL is local-file based and safe only for same-host writers that honor OS
   file locks.
 - API keys are static.
+- API keys are validated locally and auth failures are throttled in-process, but
+  key rotation/scoping still requires OIDC or a secret-management milestone.
 - Metrics/readiness are public in local mode.
 - Backups are external to the runtime.
 
