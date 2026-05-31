@@ -23,7 +23,7 @@ jobs:
       - name: Coverage
         run: |
           cargo install cargo-llvm-cov --locked
-          cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --all-targets --lcov --output-path lcov.info --fail-under-lines 80
       - name: Security audit
         run: |
           cargo install cargo-audit --locked
