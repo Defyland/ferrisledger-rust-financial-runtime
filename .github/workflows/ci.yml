@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95
         with:
           components: rustfmt, clippy
       - name: Cache cargo
@@ -30,5 +30,9 @@ jobs:
           cargo audit
       - name: OpenAPI validation
         run: npx @redocly/cli lint openapi.yaml
+      - name: Docker Compose config
+        env:
+          FERRISLEDGER_API_KEY: dev-secret-local
+        run: docker compose config
       - name: Docker build
         run: docker build .
