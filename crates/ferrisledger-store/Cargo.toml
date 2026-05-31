@@ -10,6 +10,7 @@ repository.workspace = true
 crc32fast.workspace = true
 ferrisledger-domain = { path = "../ferrisledger-domain" }
 ferrisledger-events = { path = "../ferrisledger-events" }
+fs2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

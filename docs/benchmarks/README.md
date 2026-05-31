@@ -14,11 +14,15 @@ The baseline target is correctness-first:
 - Stress: ramp to 30 VUs.
 - Spike: jump to 50 VUs.
 
-Measured output is stored in
-[`benchmarks/results/2026-05-30-smoke.md`](../../benchmarks/results/2026-05-30-smoke.md).
-The latest smoke result recorded p50 8.49 ms, p95 13.85 ms, p99 15.1 ms,
-1.956002 req/s, 0.00% errors, and Criterion replay mean of 320.18 us for 100
-deposits.
+Measured output:
+
+- [`benchmarks/results/2026-05-30-smoke.md`](../../benchmarks/results/2026-05-30-smoke.md)
+- [`benchmarks/results/2026-05-31-load.md`](../../benchmarks/results/2026-05-31-load.md)
+
+The latest load result recorded p50 15.16 ms, p95 52.47 ms, p99 109.59 ms,
+18.959445 req/s, 0.00% errors, server max CPU 10.90%, server max RSS
+23,184 KiB, and k6 max RSS 43,408 KiB. The latest Criterion replay point
+estimate was 537.04 us for 100 deposits.
 
 ## Bottlenecks expected
 

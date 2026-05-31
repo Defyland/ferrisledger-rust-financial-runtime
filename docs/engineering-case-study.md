@@ -23,10 +23,11 @@ early microservices.
 ## 4. Key Trade-offs
 
 JSONL storage keeps the MVP inspectable and makes corruption tests simple, but
-it is not a long-term multi-writer database. CRC32 detects accidental
-corruption but does not prove malicious tamper resistance. API-key auth is
-enough for local/internal demonstration, while production would need scoped
-keys or OIDC.
+it is not a long-term multi-writer database. The local store now uses advisory
+OS file locks to coordinate same-host processes, which improves the MVP without
+claiming distributed locking. CRC32 detects accidental corruption but does not
+prove malicious tamper resistance. API-key auth is enough for local/internal
+demonstration, while production would need scoped keys or OIDC.
 
 ## 5. Data Model
 
@@ -39,13 +40,17 @@ causation ID, schema version, timestamp, producer, and typed payload.
 Commands read the current stream, rebuild state, validate rules, then append
 with an expected stream version. This optimistic check prevents blind writes
 against a stale stream. Money movement is strongly consistent within one
-account stream.
+account stream. Repeatable commands use globally unique idempotency keys:
+identical retries replay the original event, while incompatible reuse returns a
+conflict before appending financial facts.
 
 ## 7. Failure Scenarios
 
 - Corrupt JSON or checksum mismatch blocks readiness and replay.
 - Duplicate event IDs are rejected before append.
-- Repeated idempotent commands return the original event.
+- Repeated idempotent commands return the original event only when command
+  semantics match; incompatible key reuse returns conflict.
+- Monetary overflow and underflow return domain errors instead of wrapping.
 - Insufficient funds are rejected before persistence.
 - Tenant/account mismatches fail projection.
 
@@ -53,7 +58,8 @@ account stream.
 
 The hot path is read stream, replay account, validate command, append one line,
 and fsync. Criterion measures replay cost for 100 deposit events. k6 scripts
-exercise smoke, load, stress, and spike API profiles.
+exercise smoke, load, stress, and spike API profiles. The latest load baseline
+records latency, throughput, error rate, server CPU, and server RSS.
 
 ## 9. Scalability Strategy
 
@@ -68,7 +74,8 @@ tenant, rate-limits authenticated callers per API key, validates identifiers,
 avoids logging sensitive payloads, and documents secrets through environment
 variables. The API key must be provided at runtime; it is not baked into the
 CLI default or Docker image. Tenant-isolation and rate-limit behavior are
-covered by API tests.
+covered by API tests, and idempotency-confusion abuse is covered by runtime and
+API conflict tests.
 
 ## 11. Observability
 

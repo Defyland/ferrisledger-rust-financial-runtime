@@ -15,7 +15,7 @@ const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
 const apiKey = __ENV.API_KEY || 'dev-secret';
 
 export default function () {
-  const accountId = `smoke_${Date.now()}_${__ITER}`;
+  const accountId = `smoke_${Date.now()}_${__VU}_${__ITER}`;
   const openCorrelationId = `corr_open_${accountId}`;
   const depositCorrelationId = `corr_deposit_${accountId}`;
   const headers = {

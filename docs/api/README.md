@@ -34,8 +34,14 @@ return `x-correlation-id` from the command payload.
 
 Stable error codes include `unauthorized`, `bad_request`,
 `account_not_found`, `account_already_exists`, `invalid_money`,
-`currency_mismatch`, `insufficient_funds`, `version_conflict`, and
-`event_log_corrupt`.
+`money_arithmetic_overflow`, `currency_mismatch`, `insufficient_funds`,
+`idempotency_conflict`, `version_conflict`, and `event_log_corrupt`.
 
 `rate_limited` is returned with HTTP `429` when an authenticated API key exceeds
 the configured rolling-window request limit.
+
+Repeatable command endpoints replay the original event only when the reused
+idempotency key matches the same command semantics. Reusing a key with different
+amount, currency, command type, account, tenant, settlement/ledger ID,
+beneficiary, reason, or related event returns HTTP `409` with
+`idempotency_conflict`.

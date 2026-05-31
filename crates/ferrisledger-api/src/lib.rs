@@ -505,7 +505,9 @@ impl ApiError {
             Self::BadRequest(_) | Self::Domain(DomainError::InvalidIdentifier(_)) => {
                 StatusCode::BAD_REQUEST
             }
-            Self::Domain(DomainError::InvalidMoney(_)) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Domain(DomainError::InvalidMoney(_) | DomainError::MoneyArithmeticOverflow) => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
             Self::Domain(DomainError::CurrencyMismatch { .. }) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Domain(DomainError::AccountNotOpen | DomainError::InsufficientFunds { .. }) => {
                 StatusCode::UNPROCESSABLE_ENTITY
@@ -522,6 +524,7 @@ impl ApiError {
             Self::BadRequest(_) => "bad_request",
             Self::Domain(DomainError::InvalidIdentifier(_)) => "invalid_identifier",
             Self::Domain(DomainError::InvalidMoney(_)) => "invalid_money",
+            Self::Domain(DomainError::MoneyArithmeticOverflow) => "money_arithmetic_overflow",
             Self::Domain(DomainError::CurrencyMismatch { .. }) => "currency_mismatch",
             Self::Domain(DomainError::AccountNotOpen) => "account_not_open",
             Self::Domain(DomainError::InsufficientFunds { .. }) => "insufficient_funds",
@@ -529,9 +532,13 @@ impl ApiError {
             Self::Runtime(RuntimeError::Rule(RuleError::AccountAlreadyExists)) => {
                 "account_already_exists"
             }
+            Self::Runtime(RuntimeError::IdempotencyConflict { .. }) => "idempotency_conflict",
             Self::Runtime(RuntimeError::Rule(RuleError::InvalidCommand(_))) => "invalid_command",
             Self::Runtime(RuntimeError::Store(StoreError::VersionConflict { .. })) => {
                 "version_conflict"
+            }
+            Self::Runtime(RuntimeError::Store(StoreError::DuplicateIdempotencyKey(_))) => {
+                "idempotency_conflict"
             }
             Self::Runtime(RuntimeError::Store(StoreError::ChecksumMismatch { .. })) => {
                 "event_log_corrupt"
@@ -601,11 +608,14 @@ fn status_for_runtime_error(error: &RuntimeError) -> StatusCode {
     match error {
         RuntimeError::Rule(RuleError::AccountNotFound) => StatusCode::NOT_FOUND,
         RuntimeError::Rule(RuleError::AccountAlreadyExists)
+        | RuntimeError::IdempotencyConflict { .. }
         | RuntimeError::Store(StoreError::VersionConflict { .. })
+        | RuntimeError::Store(StoreError::DuplicateIdempotencyKey(_))
         | RuntimeError::Store(StoreError::DuplicateEventId(_)) => StatusCode::CONFLICT,
         RuntimeError::Rule(
             RuleError::Domain(
                 DomainError::InvalidMoney(_)
+                | DomainError::MoneyArithmeticOverflow
                 | DomainError::CurrencyMismatch { .. }
                 | DomainError::AccountNotOpen
                 | DomainError::InsufficientFunds { .. },
@@ -942,6 +952,52 @@ mod tests {
         assert_eq!(second.1["idempotent_replay"], true);
         assert_eq!(snapshot.1["balance"]["cents"], 2500);
         assert!(other_tenant.1.is_null());
+    }
+
+    #[tokio::test]
+    async fn rejects_idempotency_key_reuse_with_different_payload() {
+        let app = test_router();
+        let open = json!({
+            "tenant_id": "tenant_001",
+            "account_id": "account_001",
+            "currency": "BRL",
+            "account_holder_name": "Ada Lovelace",
+            "correlation_id": "corr_001"
+        });
+        let deposit = json!({
+            "tenant_id": "tenant_001",
+            "amount_cents": 2500,
+            "currency": "BRL",
+            "idempotency_key": "deposit_001",
+            "correlation_id": "corr_002"
+        });
+        let conflicting_deposit = json!({
+            "tenant_id": "tenant_001",
+            "amount_cents": 2600,
+            "currency": "BRL",
+            "idempotency_key": "deposit_001",
+            "correlation_id": "corr_003"
+        });
+
+        assert_eq!(
+            post_json(app.clone(), "/v1/accounts", open).await.0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            post_json(app.clone(), "/v1/accounts/account_001/deposits", deposit)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        let (status, body) = post_json(
+            app,
+            "/v1/accounts/account_001/deposits",
+            conflicting_deposit,
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["error"]["code"], "idempotency_conflict");
     }
 
     #[tokio::test]

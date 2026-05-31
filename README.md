@@ -41,10 +41,11 @@ events.
 - Clap CLI for local operations and replay.
 - Cargo workspace with domain, events, rules, store, runtime, API, worker,
   telemetry, macros, FFI, and test-support crates.
-- Append-only JSONL event store with CRC32 checksums and optimistic stream
-  version checks.
+- Append-only JSONL event store with CRC32 checksums, local OS file locks,
+  duplicate idempotency-key rejection, and optimistic stream version checks.
 - Deterministic replay into account snapshots and in-memory projections.
-- Idempotency keys for repeatable financial commands.
+- Idempotency keys for repeatable financial commands, with `409` conflict on
+  incompatible key reuse.
 - In-process API-key rate limiting for local abuse protection.
 - Prometheus metrics, structured JSON tracing, health and readiness endpoints.
 - Property tests, API tests, corruption tests, auth tests, worker tests, and a
@@ -92,9 +93,10 @@ indexes from persisted events.
 
 The MVP uses a single JSONL event log. Each line stores `{ checksum, envelope }`.
 The checksum is computed from the canonical serialized envelope. Stream version
-checks provide optimistic concurrency, and replay detects corrupt or invalid
-records before returning projections. Transaction boundaries and migration
-assumptions are documented in
+checks provide optimistic concurrency, append/read/verify use local OS file
+locks for same-host coordination, duplicate idempotency keys are rejected, and
+replay detects corrupt or invalid records before returning projections.
+Transaction boundaries and migration assumptions are documented in
 [`docs/architecture/data-consistency.md`](docs/architecture/data-consistency.md).
 
 ## 11. Testing strategy
@@ -105,16 +107,19 @@ Run:
 cargo test --workspace --all-targets
 ```
 
-Coverage includes domain unit tests, property tests for money invariants, store
-corruption tests, API authentication and BOLA-style tenant-isolation tests,
-runtime idempotency tests, worker projection tests, FFI safety-wrapper tests,
-and Criterion replay benchmark compilation.
+Coverage includes domain unit tests, property tests for money invariants,
+overflow rejection, store corruption and concurrent independent-handle tests,
+API authentication and BOLA-style tenant-isolation tests, runtime idempotency
+replay/conflict tests, worker projection tests, FFI safety-wrapper tests, and
+Criterion replay benchmark compilation.
 
 ## 12. Performance benchmarks
 
 Benchmark assets live in [`benchmarks`](benchmarks) and
 [`docs/benchmarks`](docs/benchmarks). Criterion measures replay of a stream with
-100 deposits. k6 scripts cover smoke, load, stress, and spike HTTP scenarios.
+100 deposits. k6 scripts cover smoke, load, stress, and spike HTTP scenarios;
+the latest load evidence includes latency, throughput, error rate, server CPU,
+and server RSS.
 
 ## 13. Observability
 
@@ -180,6 +185,10 @@ k6 run benchmarks/k6-smoke.js
 
 - Corrupt event-log line: readiness and replay fail with checksum/JSON errors.
 - Duplicate command retry: idempotency returns the original event.
+- Idempotency key reused with different command data: command is rejected with
+  conflict.
+- Money arithmetic overflow or underflow: command is rejected with a domain
+  error.
 - Duplicate account open: command is rejected with conflict.
 - Pix transfer above available balance: command is rejected before append.
 - Wrong tenant on read: returns no stream state for that tenant partition.

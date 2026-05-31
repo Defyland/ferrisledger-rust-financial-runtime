@@ -40,7 +40,8 @@ becomes inconsistent unless moved to a shared store such as Redis.
 ## Horizontal scaling path
 
 Read-only API replicas can serve from a shared database-backed store in a later
-phase. JSONL is single-writer and should not be shared by multiple writers.
+phase. JSONL now coordinates same-host writers with OS file locks, but it still
+should not be treated as a multi-host or multi-replica production write store.
 
 ## Sharding path
 

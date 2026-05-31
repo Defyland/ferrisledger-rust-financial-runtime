@@ -139,6 +139,8 @@ paths:
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
         "429":
@@ -161,6 +163,8 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
         "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
@@ -185,6 +189,8 @@ paths:
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
         "429":
@@ -207,6 +213,8 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
         "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
@@ -412,7 +420,131 @@ components:
         producer:
           type: string
         payload:
+          $ref: "#/components/schemas/EventPayload"
+    EventPayload:
+      oneOf:
+        - $ref: "#/components/schemas/AccountOpenedEventPayload"
+        - $ref: "#/components/schemas/MoneyDepositedEventPayload"
+        - $ref: "#/components/schemas/PixTransferRequestedEventPayload"
+        - $ref: "#/components/schemas/SettlementExecutedEventPayload"
+        - $ref: "#/components/schemas/LedgerEntryCreatedEventPayload"
+    AccountOpenedEventPayload:
+      type: object
+      required: [kind, data]
+      properties:
+        kind:
+          type: string
+          const: account_opened
+        data:
           type: object
+          required: [tenant_id, account_id, currency, account_holder_name]
+          properties:
+            tenant_id:
+              type: string
+            account_id:
+              type: string
+            currency:
+              type: string
+              minLength: 3
+              maxLength: 3
+            account_holder_name:
+              type: string
+    MoneyDepositedEventPayload:
+      type: object
+      required: [kind, data]
+      properties:
+        kind:
+          type: string
+          const: money_deposited
+        data:
+          type: object
+          required: [tenant_id, account_id, amount, idempotency_key]
+          properties:
+            tenant_id:
+              type: string
+            account_id:
+              type: string
+            amount:
+              $ref: "#/components/schemas/Money"
+            idempotency_key:
+              type: string
+    PixTransferRequestedEventPayload:
+      type: object
+      required: [kind, data]
+      properties:
+        kind:
+          type: string
+          const: pix_transfer_requested
+        data:
+          type: object
+          required: [tenant_id, account_id, amount, beneficiary_pix_key, idempotency_key]
+          properties:
+            tenant_id:
+              type: string
+            account_id:
+              type: string
+            amount:
+              $ref: "#/components/schemas/Money"
+            beneficiary_pix_key:
+              type: string
+            idempotency_key:
+              type: string
+    SettlementExecutedEventPayload:
+      type: object
+      required: [kind, data]
+      properties:
+        kind:
+          type: string
+          const: settlement_executed
+        data:
+          type: object
+          required: [tenant_id, account_id, amount, settlement_id, idempotency_key]
+          properties:
+            tenant_id:
+              type: string
+            account_id:
+              type: string
+            amount:
+              $ref: "#/components/schemas/Money"
+            settlement_id:
+              type: string
+            idempotency_key:
+              type: string
+    LedgerEntryCreatedEventPayload:
+      type: object
+      required: [kind, data]
+      properties:
+        kind:
+          type: string
+          const: ledger_entry_created
+        data:
+          type: object
+          required:
+            - tenant_id
+            - account_id
+            - ledger_entry_id
+            - direction
+            - amount
+            - reason
+            - idempotency_key
+          properties:
+            tenant_id:
+              type: string
+            account_id:
+              type: string
+            ledger_entry_id:
+              type: string
+            direction:
+              type: string
+              enum: [credit, debit]
+            amount:
+              $ref: "#/components/schemas/Money"
+            reason:
+              type: string
+            idempotency_key:
+              type: string
+            related_event_id:
+              type: [string, "null"]
     AccountState:
       type: object
       required: [tenant_id, account_id, status, balance, pending_pix_out, version]

@@ -28,6 +28,7 @@ axum = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 crc32fast = "1"
 criterion = "0.7"
+fs2 = "0.4"
 http = "1"
 http-body-util = "0.1"
 prometheus = "0.14"

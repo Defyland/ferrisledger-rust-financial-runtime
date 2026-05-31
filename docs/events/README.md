@@ -25,7 +25,8 @@ explicit in the event contract.
 ## Compatibility policy
 
 - Consumers deduplicate by `event_id`.
-- Producers use idempotency keys for repeatable external commands.
+- Producers use idempotency keys for repeatable external commands and must not
+  reuse a key for different command semantics.
 - Replays preserve original event IDs and causal metadata.
 - New fields must be optional until all readers tolerate them.
 - Required field semantics must not change without a new version.

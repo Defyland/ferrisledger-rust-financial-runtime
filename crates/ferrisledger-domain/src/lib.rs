@@ -57,6 +57,9 @@ pub enum DomainError {
         /// Actual ISO-4217 currency.
         actual: String,
     },
+    /// Monetary arithmetic exceeded the supported i64 minor-unit range.
+    #[error("money arithmetic overflow")]
+    MoneyArithmeticOverflow,
     /// Account state does not allow the requested operation.
     #[error("account is not open")]
     AccountNotOpen,
@@ -110,8 +113,12 @@ impl Money {
     /// Adds two monetary values with the same currency.
     pub fn checked_add(&self, other: &Self) -> Result<Self, DomainError> {
         self.ensure_same_currency(other)?;
+        let cents = self
+            .cents
+            .checked_add(other.cents)
+            .ok_or(DomainError::MoneyArithmeticOverflow)?;
         Ok(Self {
-            cents: self.cents + other.cents,
+            cents,
             currency: self.currency.clone(),
         })
     }
@@ -119,8 +126,12 @@ impl Money {
     /// Subtracts two monetary values with the same currency.
     pub fn checked_sub(&self, other: &Self) -> Result<Self, DomainError> {
         self.ensure_same_currency(other)?;
+        let cents = self
+            .cents
+            .checked_sub(other.cents)
+            .ok_or(DomainError::MoneyArithmeticOverflow)?;
         Ok(Self {
-            cents: self.cents - other.cents,
+            cents,
             currency: self.currency.clone(),
         })
     }
@@ -310,6 +321,29 @@ mod tests {
                 requested_cents: 1_001,
             }
         );
+    }
+
+    #[test]
+    fn rejects_money_addition_overflow() {
+        let max = Money::new(i64::MAX, "BRL").expect("max");
+        let one = Money::new(1, "BRL").expect("one");
+
+        let error = max.checked_add(&one).expect_err("overflow");
+
+        assert_eq!(error, DomainError::MoneyArithmeticOverflow);
+    }
+
+    #[test]
+    fn rejects_money_subtraction_overflow() {
+        let min_internal_state = Money {
+            cents: i64::MIN,
+            currency: "BRL".to_string(),
+        };
+        let one = Money::new(1, "BRL").expect("one");
+
+        let error = min_internal_state.checked_sub(&one).expect_err("overflow");
+
+        assert_eq!(error, DomainError::MoneyArithmeticOverflow);
     }
 
     proptest! {

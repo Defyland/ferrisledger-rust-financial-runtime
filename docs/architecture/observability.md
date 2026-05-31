@@ -37,6 +37,8 @@ Prometheus alert rules: `ops/prometheus/ferrisledger-alerts.yml`.
 
 ## Trace status
 
-The runtime has structured spans/log context but does not yet export OTLP
-traces. OpenTelemetry exporter setup is deferred until the service has a
-production deployment target.
+The runtime has structured JSON trace/log context with request ID, correlation
+ID, event ID, stream ID, command result, and idempotent replay status. OTLP
+collector export is intentionally deferred because this local MVP does not run
+an external collector; the next production-shaped observability step is to add
+`tracing-opentelemetry` and an OpenTelemetry Collector profile.

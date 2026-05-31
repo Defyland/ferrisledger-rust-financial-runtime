@@ -11,10 +11,13 @@ observability assets, tests, benchmarks, and runbooks.
 
 | Issue | Action |
 | --- | --- |
-| Dockerfile embedded `FERRISLEDGER_API_KEY=dev-secret` | Removed the image-level default key and require runtime configuration. |
-| `serve` accepted an implicit default API key | Changed the CLI so `--api-key` or `FERRISLEDGER_API_KEY` is required. |
-| Compose stored the local key directly | Switched Compose to caller-provided `FERRISLEDGER_API_KEY`. |
-| Verification report still marked Docker build blocked | Re-ran Docker locally and refreshed the evidence. |
+| Money arithmetic used direct `i64` operators despite `checked_*` names | Added checked arithmetic, explicit overflow error, API mapping, and overflow tests. |
+| Idempotency replay ignored divergent command payloads | Added semantic comparison before replay and `409 idempotency_conflict` on mismatch. |
+| JSONL coordination relied on in-process mutex only | Added OS file locks for local same-host append/read/verify and a concurrent independent-handle test. |
+| OpenAPI modeled event payload as generic `object` | Added concrete `oneOf` schemas for all event payload variants. |
+| Local coverage was marked blocked | Ran coverage with Homebrew LLVM via `LLVM_COV` and `LLVM_PROFDATA`. |
+| CPU/memory benchmark evidence was missing | Recorded a k6 load baseline with server CPU/RSS samples. |
+| Spec evidence lagged the actual review blockers | Added a hardening spec and refreshed the senior-readiness matrix. |
 
 ## What Is Strong Now
 
@@ -22,11 +25,18 @@ observability assets, tests, benchmarks, and runbooks.
 - Append-only storage has explicit corruption detection and runbooks.
 - API has versioning, auth, idempotency, standardized errors, OpenAPI, and
   failure tests.
+- Money arithmetic rejects overflow instead of wrapping.
 - Observability includes domain/security metrics, readiness verification, and
   contextual audit logs.
 - Documentation explains why the design is intentionally a modular monolith and
   why JSONL is an MVP store.
-- Secret handling now avoids baked-in API keys for the CLI and Docker image.
+- JSONL now has local file-lock coordination, while remaining honest about the
+  PostgreSQL requirement before multi-replica production writes.
+- Benchmarks now include load latency, throughput, error rate, server CPU, and
+  server RSS evidence.
+- Local coverage is executable without `rustup` by pointing to Homebrew LLVM
+  tools.
+- Secret handling avoids baked-in API keys for the CLI and Docker image.
 
 ## Best Next Moves To Impress
 
@@ -40,7 +50,7 @@ observability assets, tests, benchmarks, and runbooks.
 5. Add snapshot compaction and segment-retention policy for long streams.
 6. Add tamper-evident event signatures if positioning the project for regulated
    finance/audit work.
-7. Capture load/stress/spike benchmark result files with CPU and memory notes.
+7. Capture stress/spike benchmark result files with CPU and memory notes.
 
 ## Interview Narrative
 

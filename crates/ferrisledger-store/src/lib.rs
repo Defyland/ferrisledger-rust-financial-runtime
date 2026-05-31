@@ -2,13 +2,14 @@
 
 use std::{
     fs::{File, OpenOptions},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-use ferrisledger_domain::{EventId, StreamId};
+use ferrisledger_domain::{EventId, IdempotencyKey, StreamId};
 use ferrisledger_events::EventEnvelope;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -34,6 +35,9 @@ pub enum StoreError {
     /// A decoded event had a duplicate event ID.
     #[error("duplicate event id {0}")]
     DuplicateEventId(EventId),
+    /// A decoded event had a duplicate idempotency key.
+    #[error("duplicate idempotency key {0}")]
+    DuplicateIdempotencyKey(IdempotencyKey),
     /// Optimistic stream version check failed.
     #[error("stream version conflict: expected {expected}, actual {actual}")]
     VersionConflict {
@@ -121,13 +125,26 @@ impl EventStore for FileEventStore {
     ) -> Result<AppendedEvent, StoreError> {
         let _guard = self.lock.lock().expect("event store lock poisoned");
         self.ensure_parent()?;
-        let all = read_records(&self.path)?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(self.path.as_ref())?;
+        file.lock_exclusive()?;
+        let all = read_records_from_file(&mut file)?;
 
         if all
             .iter()
             .any(|record| record.envelope.event_id == envelope.event_id)
         {
             return Err(StoreError::DuplicateEventId(envelope.event_id));
+        }
+        if let Some(idempotency_key) = envelope.payload.idempotency_key()
+            && all
+                .iter()
+                .any(|record| record.envelope.payload.idempotency_key() == Some(idempotency_key))
+        {
+            return Err(StoreError::DuplicateIdempotencyKey(idempotency_key.clone()));
         }
 
         let stream_version = all
@@ -144,10 +161,6 @@ impl EventStore for FileEventStore {
         }
 
         let record = StoredRecord::from_envelope(envelope.clone())?;
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.path.as_ref())?;
         serde_json::to_writer(&mut file, &record)?;
         file.write_all(b"\n")?;
         file.sync_data()?;
@@ -160,7 +173,7 @@ impl EventStore for FileEventStore {
     }
 
     fn read_stream(&self, stream_id: &StreamId) -> Result<Vec<EventEnvelope>, StoreError> {
-        read_records(&self.path).map(|records| {
+        read_records_shared(&self.path).map(|records| {
             records
                 .into_iter()
                 .filter_map(|record| {
@@ -175,12 +188,12 @@ impl EventStore for FileEventStore {
     }
 
     fn read_all(&self) -> Result<Vec<EventEnvelope>, StoreError> {
-        read_records(&self.path)
+        read_records_shared(&self.path)
             .map(|records| records.into_iter().map(|record| record.envelope).collect())
     }
 
     fn verify(&self) -> Result<StoreVerification, StoreError> {
-        let records = read_records(&self.path)?;
+        let records = read_records_shared(&self.path)?;
         let mut streams = std::collections::BTreeSet::new();
         for record in &records {
             streams.insert(record.envelope.stream_id.clone());
@@ -219,12 +232,21 @@ impl StoredRecord {
     }
 }
 
-fn read_records(path: &Path) -> Result<Vec<StoredRecord>, StoreError> {
-    if !path.exists() {
-        return Ok(Vec::new());
+fn read_records_shared(path: &Path) -> Result<Vec<StoredRecord>, StoreError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)?;
+    file.lock_shared()?;
+    read_records_from_file(&mut file)
+}
 
-    let file = File::open(path)?;
+fn read_records_from_file(file: &mut File) -> Result<Vec<StoredRecord>, StoreError> {
+    file.seek(SeekFrom::Start(0))?;
     let reader = BufReader::new(file);
     let mut records = Vec::new();
     for (idx, line) in reader.lines().enumerate() {
@@ -247,17 +269,48 @@ fn checksum(envelope: &EventEnvelope) -> Result<u32, StoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferrisledger_domain::{AccountId, CorrelationId, TenantId, account_stream_id};
-    use ferrisledger_events::{AccountOpened, EventEnvelope, EventMetadata, FinancialEvent};
+    use ferrisledger_domain::{
+        AccountId, CorrelationId, IdempotencyKey, Money, TenantId, account_stream_id,
+    };
+    use ferrisledger_events::{
+        AccountOpened, EventEnvelope, EventMetadata, FinancialEvent, MoneyDeposited,
+    };
+    use std::{
+        sync::{Arc, Barrier},
+        thread,
+    };
 
     fn opened_event() -> EventEnvelope {
+        opened_event_for("account_001")
+    }
+
+    fn opened_event_for(account: &str) -> EventEnvelope {
         let tenant_id = TenantId::new("tenant_001").expect("tenant");
-        let account_id = AccountId::new("account_001").expect("account");
+        let account_id = AccountId::new(account).expect("account");
         let payload = FinancialEvent::AccountOpened(AccountOpened {
             tenant_id: tenant_id.clone(),
             account_id: account_id.clone(),
             currency: "BRL".to_string(),
             account_holder_name: "Ada Lovelace".to_string(),
+        });
+        EventEnvelope::new(
+            payload,
+            EventMetadata::new(
+                account_stream_id(&tenant_id, &account_id).expect("stream"),
+                CorrelationId::new("corr_001").expect("correlation"),
+            ),
+        )
+        .expect("envelope")
+    }
+
+    fn deposit_event(idempotency_key: &str) -> EventEnvelope {
+        let tenant_id = TenantId::new("tenant_001").expect("tenant");
+        let account_id = AccountId::new("account_001").expect("account");
+        let payload = FinancialEvent::MoneyDeposited(MoneyDeposited {
+            tenant_id: tenant_id.clone(),
+            account_id: account_id.clone(),
+            amount: Money::new(1_000, "BRL").expect("money"),
+            idempotency_key: IdempotencyKey::new(idempotency_key).expect("idempotency"),
         });
         EventEnvelope::new(
             payload,
@@ -307,6 +360,25 @@ mod tests {
     }
 
     #[test]
+    fn rejects_duplicate_idempotency_key() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = FileEventStore::new(dir.path().join("events.jsonl"));
+
+        store
+            .append(deposit_event("idem_001"), None)
+            .expect("first append");
+        let error = store
+            .append(deposit_event("idem_001"), None)
+            .expect_err("duplicate idempotency");
+
+        assert!(matches!(
+            error,
+            StoreError::DuplicateIdempotencyKey(idempotency_key)
+                if idempotency_key.as_str() == "idem_001"
+        ));
+    }
+
+    #[test]
     fn detects_corrupt_checksum() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("events.jsonl");
@@ -321,5 +393,39 @@ mod tests {
             store.verify(),
             Err(StoreError::Json(_)) | Err(StoreError::ChecksumMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn independent_store_handles_coordinate_concurrent_appends() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("events.jsonl");
+        let thread_count = 20;
+        let barrier = Arc::new(Barrier::new(thread_count));
+        let mut handles = Vec::new();
+
+        for index in 0..thread_count {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                let store = FileEventStore::new(path);
+                let event = opened_event_for(&format!("account_{index:03}"));
+                barrier.wait();
+                store
+                    .append(event, Some(0))
+                    .expect("append")
+                    .global_position
+            }));
+        }
+
+        let mut positions = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("thread"))
+            .collect::<Vec<_>>();
+        positions.sort_unstable();
+
+        let store = FileEventStore::new(path);
+        assert_eq!(positions, (1..=thread_count as u64).collect::<Vec<_>>());
+        assert_eq!(store.verify().expect("verify").records, thread_count as u64);
+        assert_eq!(store.read_all().expect("events").len(), thread_count);
     }
 }

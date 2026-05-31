@@ -14,7 +14,8 @@ metrics, tests, Dockerfile, Docker Compose file, and CI workflow.
 
 ## Not production-ready yet
 
-- JSONL is single-writer and local-file based.
+- JSONL is local-file based and safe only for same-host writers that honor OS
+  file locks.
 - API keys are static.
 - Metrics/readiness are public in local mode.
 - Backups are external to the runtime.
