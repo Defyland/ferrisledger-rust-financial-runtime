@@ -403,6 +403,7 @@ dependencies = [
  "ferrisledger-telemetry",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]
