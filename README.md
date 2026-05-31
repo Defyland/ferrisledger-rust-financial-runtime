@@ -110,9 +110,10 @@ cargo test --workspace --all-targets
 
 Coverage includes domain unit tests, property tests for money invariants,
 overflow rejection, store corruption and concurrent independent-handle tests,
-API authentication and BOLA-style tenant-isolation tests, runtime idempotency
-replay/conflict tests, worker projection tests, FFI safety-wrapper tests, and
-Criterion replay benchmark compilation.
+API authentication, auth-failure limiting, BOLA-style tenant isolation,
+operational endpoints, Pix/settlement/ledger request workflows, CLI smoke
+tests, runtime idempotency replay/conflict tests, worker projection tests, FFI
+safety-wrapper tests, and Criterion replay benchmark compilation.
 
 ## 12. Performance benchmarks
 
@@ -180,6 +181,9 @@ FERRISLEDGER_API_KEY=dev-secret-local docker compose up --build
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
+LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov \
+  LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata \
+  cargo llvm-cov --workspace --all-targets --fail-under-lines 85
 cargo bench -p ferrisledger-runtime --bench replay
 k6 run benchmarks/k6-smoke.js
 ```

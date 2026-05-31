@@ -19,10 +19,10 @@ Measured output:
 - [`benchmarks/results/2026-05-30-smoke.md`](../../benchmarks/results/2026-05-30-smoke.md)
 - [`benchmarks/results/2026-05-31-load.md`](../../benchmarks/results/2026-05-31-load.md)
 
-The latest load result recorded p50 15.16 ms, p95 52.47 ms, p99 109.59 ms,
-18.959445 req/s, 0.00% errors, server max CPU 10.90%, server max RSS
-23,184 KiB, and k6 max RSS 43,408 KiB. The latest Criterion replay point
-estimate was 537.04 us for 100 deposits.
+The latest load result recorded p50 13 ms, p95 39.39 ms, p99 68.21 ms,
+19.240515 req/s, 0.00% errors, server max CPU 25.40%, server max RSS
+25,120 KiB, and k6 max RSS 42,608 KiB. The latest Criterion replay point
+estimate was 268.82 us for 100 deposits.
 
 ## Bottlenecks expected
 

@@ -34,8 +34,10 @@ handling visible.
 One tenant or account can become hot because stream IDs are scoped by
 `tenant_id + account_id`.
 
-The local rate limiter is keyed by API key. In a multi-replica deployment this
-becomes inconsistent unless moved to a shared store such as Redis.
+The authenticated local rate limiter is keyed by API key, and invalid-auth
+attempts use a separate in-process bucket. In a multi-replica deployment both
+become inconsistent unless moved to a shared store such as Redis, Envoy, or an
+API-gateway limiter.
 
 ## Horizontal scaling path
 

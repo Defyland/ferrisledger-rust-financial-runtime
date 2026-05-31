@@ -15,8 +15,13 @@ that a reviewer expects before production migration.
 | Idempotency | Reusing an idempotency key with the same command must replay the prior event; reusing it with different command type, amount, currency, account, tenant, settlement/ledger IDs, beneficiary, reason, or related event must return conflict. | Runtime and API tests assert replay and conflict paths. |
 | Local store concurrency | JSONL append and verification must coordinate across processes on the same host, not only across clones inside one process. | Store uses OS file locks plus the existing in-process mutex; tests cover concurrent appends from independent store handles. |
 | Contract specificity | OpenAPI must define concrete event payload shapes rather than an unconstrained `object`. | `npx @redocly/cli lint openapi.yaml`; manual schema audit. |
-| Local coverage | Coverage must run on the local Homebrew Rust toolchain without requiring `rustup`. | `LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata cargo llvm-cov report --summary-only`. |
-| Load resource evidence | At least one k6 load result must include latency percentiles, throughput, error rate, server CPU, and server RSS. | `benchmarks/results/2026-05-31-load.md`. |
+| Runtime API-key posture | The API must reject weak configured keys, avoid default image secrets, and document the exact local secret contract. | API configuration tests, CLI help, Docker build, Compose config, security docs. |
+| Invalid-auth abuse control | Missing or wrong API keys must be throttled separately from authenticated request buckets. | API auth-failure rate-limit test and `--auth-failure-rate-limit-per-minute` CLI option. |
+| Endpoint workflow coverage | HTTP tests must exercise operational surfaces and money-flow endpoints, not only happy-path account creation. | `cargo test -p ferrisledger-api --all-targets`. |
+| Operator CLI coverage | The CLI must have executable smoke evidence for local verification, account workflow, replay, and weak-key rejection. | `cargo test -p ferrisledger-cli --all-targets`. |
+| Local coverage gate | Coverage must run on the local Homebrew Rust toolchain without requiring `rustup` and must fail below the CI floor. | `cargo llvm-cov --workspace --all-targets --lcov --output-path /tmp/ferrisledger-lcov-final.info --fail-under-lines 85`; summary measured 90.32% line coverage. |
+| Load resource evidence | At least one k6 load result must include p50/p95/p99 latency, throughput, error rate, server CPU, and server RSS. | `benchmarks/results/2026-05-31-load.md`. |
+| Benchmark script fidelity | k6 smoke/load/stress/spike assets must expose full latency percentiles, including p99, so future local runs are comparable. | `k6 inspect benchmarks/k6-smoke.js`, `k6-load.js`, `k6-stress.js`, and `k6-spike.js`. |
 | Review evidence | Senior-readiness docs must record the new evidence and avoid claiming production readiness where only local guarantees exist. | Spec matrix and verification report updated with commands and residual risks. |
 
 ## Out of Scope
