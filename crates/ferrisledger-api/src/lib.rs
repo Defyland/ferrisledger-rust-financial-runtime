@@ -969,6 +969,44 @@ mod tests {
         (status, value)
     }
 
+    async fn get_public_json(app: Router, uri: &str) -> (StatusCode, serde_json::Value) {
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(uri)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let value = serde_json::from_slice(&bytes).expect("json");
+        (status, value)
+    }
+
+    async fn get_public_text(app: Router, uri: &str) -> (StatusCode, String) {
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(uri)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let body = String::from_utf8(bytes.to_vec()).expect("utf8");
+        (status, body)
+    }
+
     #[tokio::test]
     async fn opens_account() {
         let body = json!({
@@ -983,6 +1021,24 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value["event"]["event_type"], "account_opened");
+    }
+
+    #[tokio::test]
+    async fn exposes_health_readiness_and_metrics_without_api_key() {
+        let app = test_router();
+
+        let health = get_public_json(app.clone(), "/healthz").await;
+        let readiness = get_public_json(app.clone(), "/readyz").await;
+        let metrics = get_public_text(app, "/metrics").await;
+
+        assert_eq!(health.0, StatusCode::OK);
+        assert_eq!(health.1["status"], "ok");
+        assert_eq!(readiness.0, StatusCode::OK);
+        assert_eq!(readiness.1["records"], 0);
+        assert_eq!(readiness.1["streams"], 0);
+        assert_eq!(metrics.0, StatusCode::OK);
+        assert!(metrics.1.contains("ferrisledger_http_requests_total"));
+        assert!(metrics.1.contains("ferrisledger_event_store_records"));
     }
 
     #[test]
@@ -1095,6 +1151,122 @@ mod tests {
         assert_eq!(second.1["idempotent_replay"], true);
         assert_eq!(snapshot.1["balance"]["cents"], 2500);
         assert!(other_tenant.1.is_null());
+    }
+
+    #[tokio::test]
+    async fn pix_settlement_ledger_and_event_listing_cover_full_account_flow() {
+        let app = test_router();
+        let open = json!({
+            "tenant_id": "tenant_001",
+            "account_id": "account_001",
+            "currency": "BRL",
+            "account_holder_name": "Ada Lovelace",
+            "correlation_id": "corr_open"
+        });
+        let deposit = json!({
+            "tenant_id": "tenant_001",
+            "amount_cents": 5000,
+            "currency": "BRL",
+            "idempotency_key": "deposit_full_flow",
+            "correlation_id": "corr_deposit"
+        });
+        let pix = json!({
+            "tenant_id": "tenant_001",
+            "amount_cents": 1200,
+            "currency": "BRL",
+            "beneficiary_pix_key": "beneficiary@example.com",
+            "idempotency_key": "pix_full_flow",
+            "correlation_id": "corr_pix"
+        });
+        let settlement = json!({
+            "tenant_id": "tenant_001",
+            "amount_cents": 1200,
+            "currency": "BRL",
+            "settlement_id": "settlement_full_flow",
+            "idempotency_key": "settlement_full_flow",
+            "correlation_id": "corr_settlement"
+        });
+        let ledger = json!({
+            "tenant_id": "tenant_001",
+            "ledger_entry_id": "ledger_full_flow",
+            "direction": "credit",
+            "amount_cents": 500,
+            "currency": "BRL",
+            "reason": "manual reconciliation evidence",
+            "idempotency_key": "ledger_full_flow",
+            "correlation_id": "corr_ledger"
+        });
+
+        assert_eq!(
+            post_json(app.clone(), "/v1/accounts", open).await.0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            post_json(app.clone(), "/v1/accounts/account_001/deposits", deposit)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            post_json(app.clone(), "/v1/accounts/account_001/pix-transfers", pix)
+                .await
+                .0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            post_json(
+                app.clone(),
+                "/v1/accounts/account_001/settlements",
+                settlement,
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+        assert_eq!(
+            post_json(
+                app.clone(),
+                "/v1/accounts/account_001/ledger-entries",
+                ledger,
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+
+        let events = get_json(
+            app.clone(),
+            "/v1/accounts/account_001/events?tenant_id=tenant_001",
+        )
+        .await;
+        let snapshot = get_json(
+            app,
+            "/v1/accounts/account_001/snapshot?tenant_id=tenant_001",
+        )
+        .await;
+
+        let event_types = events
+            .1
+            .as_array()
+            .expect("events array")
+            .iter()
+            .map(|event| event["event_type"].as_str().expect("event type"))
+            .collect::<Vec<_>>();
+        assert_eq!(events.0, StatusCode::OK);
+        assert_eq!(
+            event_types,
+            vec![
+                "account_opened",
+                "money_deposited",
+                "pix_transfer_requested",
+                "settlement_executed",
+                "ledger_entry_created",
+            ]
+        );
+        assert_eq!(snapshot.0, StatusCode::OK);
+        assert_eq!(snapshot.1["balance"]["cents"], 3800);
+        assert_eq!(snapshot.1["pending_pix_out"]["cents"], 0);
+        assert_eq!(snapshot.1["version"], 5);
     }
 
     #[tokio::test]
