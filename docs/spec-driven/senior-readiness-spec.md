@@ -87,10 +87,11 @@ the reason must be recorded.
 | Domain language and aggregate boundary are documented | `docs/domain/*.md`, `crates/ferrisledger-domain/src/lib.rs` | Done | Account stream is the consistency boundary. |
 | Critical money rules are tested | `crates/ferrisledger-domain/src/lib.rs`, `crates/ferrisledger-rules/src/lib.rs` | Done | Unit/property tests cover deposits, reservations, settlements, and replay. |
 | Architecture boundaries are documented | `docs/architecture/module-boundaries.md`, `Cargo.toml`, `crates/*` | Done | Crates map to domain/events/rules/store/runtime/adapters. |
-| Rejected alternatives are recorded | `docs/adr/0002-use-jsonl-event-store-for-mvp.md`, `docs/adr/0003-keep-runtime-as-modular-monolith.md`, `docs/adr/0004-isolate-unsafe-and-ffi.md` | Done | JSONL, modular monolith, and FFI boundaries are justified. |
+| Rejected alternatives are recorded | `docs/adr/0002-use-jsonl-event-store-for-mvp.md`, `docs/adr/0003-keep-runtime-as-modular-monolith.md`, `docs/adr/0004-isolate-unsafe-and-ffi.md`, `docs/adr/0005-require-runtime-api-key-configuration.md` | Done | JSONL, modular monolith, FFI boundaries, and runtime secret configuration are justified. |
 | API contract is valid | `openapi.yaml`, command `npx @redocly/cli lint openapi.yaml` | Done | Versioned endpoints, auth, errors, 429, examples. |
 | Data consistency and corruption behavior are real | `crates/ferrisledger-store/src/lib.rs`, `docs/architecture/data-consistency.md`, `docs/runbooks/event-log-corruption.md` | Done | Expected stream version, isolation assumptions, rollback, migration path, and CRC32 verification exist. |
 | API auth is tested | `crates/ferrisledger-api/src/lib.rs` | Done | Missing API key returns `401`. |
+| API key is supplied at runtime, not baked into the image | `crates/ferrisledger-cli/src/main.rs`, `Dockerfile`, `docker-compose.yml`, `docs/security/secrets.md`, `docs/adr/0005-require-runtime-api-key-configuration.md` | Done | `serve` requires `--api-key` or `FERRISLEDGER_API_KEY`; Docker Compose requires caller-provided `FERRISLEDGER_API_KEY`. |
 | Tenant isolation/BOLA is tested | `crates/ferrisledger-api/src/lib.rs` | Done | Cross-tenant snapshot returns no state. |
 | Rate limiting is implemented and tested | `crates/ferrisledger-api/src/lib.rs`, `crates/ferrisledger-telemetry/src/lib.rs` | Done | Per-API-key rolling window returns `429` and increments metric. |
 | Request/correlation IDs are propagated through HTTP | `crates/ferrisledger-api/src/lib.rs`, `openapi.yaml` | Done | Success and error responses include context headers and error body context. |
@@ -103,7 +104,8 @@ the reason must be recorded.
 | Scalability limits are explicit | `docs/scalability.md`, `docs/operational-cost.md` | Done | Names JSONL single-writer and rate-limit multi-replica limits. |
 | Alerts are documented | `ops/prometheus/ferrisledger-alerts.yml`, `docs/architecture/observability.md` | Done | Error-rate, rate-limit spike, and empty-store alerts exist. |
 | CI covers required gates | `.github/workflows/ci.yml` | Done | Format, lint, tests, coverage, audit, OpenAPI, Docker build. |
-| Docker build validates locally | `Dockerfile`, `docker-compose.yml`, `docs/spec-driven/verification-report.md` | Blocked | Docker daemon was unavailable locally; CI has the gate. |
+| Local coverage command is accounted for | `docs/spec-driven/verification-report.md` | Blocked | Homebrew Rust lacks `llvm-tools-preview` and local `rustup`; CI keeps coverage as a required gate. |
+| Docker build validates locally | `Dockerfile`, `docker-compose.yml`, `docs/spec-driven/verification-report.md` | Done | Docker build passed locally after removing the image-level default API key. |
 
 ## Out of Scope
 

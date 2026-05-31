@@ -163,7 +163,7 @@ cargo run -p ferrisledger-cli -- serve \
 Docker:
 
 ```bash
-docker compose up --build
+FERRISLEDGER_API_KEY=dev-secret docker compose up --build
 ```
 
 ## 17. How to run tests

@@ -1,33 +1,20 @@
 # Tech Lead Review
 
-## What Was Below Senior Bar
+## Current Assessment
 
-Before the hardening pass, the project had a strong shape but still had gaps
-that a senior reviewer would notice:
+FerrisLedger now reads as a cohesive financial runtime rather than a Rust
+syntax exercise. The strongest evidence is the alignment between domain nouns,
+crate boundaries, event contracts, API behavior, corruption handling,
+observability assets, tests, benchmarks, and runbooks.
 
-- Spec-driven evidence was missing even though the shared standard requires it.
-- Rate limiting was a documented security expectation but not a provable API
-  behavior.
-- Request/correlation context existed conceptually, but was not propagated
-  consistently through HTTP success/error responses.
-- Observability leaned on generic HTTP metrics and logs; security/domain
-  signals such as rate-limit rejections were not visible enough.
-- Commit history did not yet tell an atomic implementation story because the
-  workspace changes were still uncommitted.
-- Docker build could not be locally proven because the Docker daemon was not
-  running.
+## Issues Found In This Continuation Pass
 
-## Improvements Made
-
-| Improvement | Why it matters in a senior evaluation |
+| Issue | Action |
 | --- | --- |
-| Added `docs/spec-driven/` acceptance criteria, implementation plan, and verification report | Shows deliberate scope, traceability, and evidence instead of ad hoc coding. |
-| Added in-process API-key rate limiting with `429` and test coverage | Converts a security claim into executable behavior and verifies abuse resistance. |
-| Added `ferrisledger_api_rate_limited_total` metric and dashboard panel | Gives operators a signal for abuse or misconfigured clients. |
-| Propagated request/correlation context in logs, headers, and error bodies | Makes incidents diagnosable across clients, API, runtime, and persisted events. |
-| Updated OpenAPI to document `429`, context headers, and valid OAS 3.1 semantics | Keeps implementation and public contract aligned. |
-| Extended k6 smoke checks to validate context headers and p99 reporting | Measures more than status codes and proves the operational contract under HTTP. |
-| Recorded verification commands and residual risks honestly | Avoids fake production-readiness claims and names the next engineering moves. |
+| Dockerfile embedded `FERRISLEDGER_API_KEY=dev-secret` | Removed the image-level default key and require runtime configuration. |
+| `serve` accepted an implicit default API key | Changed the CLI so `--api-key` or `FERRISLEDGER_API_KEY` is required. |
+| Compose stored the local key directly | Switched Compose to caller-provided `FERRISLEDGER_API_KEY`. |
+| Verification report still marked Docker build blocked | Re-ran Docker locally and refreshed the evidence. |
 
 ## What Is Strong Now
 
@@ -39,6 +26,7 @@ that a senior reviewer would notice:
   contextual audit logs.
 - Documentation explains why the design is intentionally a modular monolith and
   why JSONL is an MVP store.
+- Secret handling now avoids baked-in API keys for the CLI and Docker image.
 
 ## Best Next Moves To Impress
 
@@ -52,8 +40,7 @@ that a senior reviewer would notice:
 5. Add snapshot compaction and segment-retention policy for long streams.
 6. Add tamper-evident event signatures if positioning the project for regulated
    finance/audit work.
-7. Run Docker build and k6 load/stress/spike on a machine with Docker daemon
-   enabled, then record those results under `benchmarks/results/`.
+7. Capture load/stress/spike benchmark result files with CPU and memory notes.
 
 ## Interview Narrative
 

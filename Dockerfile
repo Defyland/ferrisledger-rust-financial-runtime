@@ -15,7 +15,6 @@ COPY --from=builder /app/target/release/ferrisledger /usr/local/bin/ferrisledger
 USER ferrisledger
 EXPOSE 8080
 ENV FERRISLEDGER_STORE_PATH=/data/events.jsonl
-ENV FERRISLEDGER_API_KEY=dev-secret
 ENV FERRISLEDGER_RATE_LIMIT_PER_MINUTE=120
 
 CMD ["ferrisledger", "serve", "--bind", "0.0.0.0:8080"]

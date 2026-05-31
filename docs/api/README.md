@@ -7,7 +7,7 @@ The canonical OpenAPI contract is [`../../openapi.yaml`](../../openapi.yaml).
 All `/v1` endpoints require:
 
 ```http
-x-api-key: dev-secret
+x-api-key: <local-api-key>
 ```
 
 Health, readiness, and metrics are public in local mode. Production should

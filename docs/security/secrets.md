@@ -14,8 +14,9 @@ cargo run -p ferrisledger-cli -- serve
 
 ## Docker Compose
 
-`docker-compose.yml` defaults to `dev-secret` for local use. Production should
-override it via a secret manager or deployment environment.
+`docker-compose.yml` requires `FERRISLEDGER_API_KEY` from the caller's
+environment and does not bake a default key into the image or Compose file.
+Use a throwaway value such as `dev-secret` only for local smoke tests.
 
 ## Rules
 

@@ -66,7 +66,9 @@ sharding can partition by tenant ID or account stream.
 The MVP protects `/v1` endpoints with `x-api-key`, isolates stream IDs by
 tenant, rate-limits authenticated callers per API key, validates identifiers,
 avoids logging sensitive payloads, and documents secrets through environment
-variables. Tenant-isolation and rate-limit behavior are covered by API tests.
+variables. The API key must be provided at runtime; it is not baked into the
+CLI default or Docker image. Tenant-isolation and rate-limit behavior are
+covered by API tests.
 
 ## 11. Observability
 

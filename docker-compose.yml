@@ -4,9 +4,9 @@ services:
     ports:
       - "8080:8080"
     environment:
-      FERRISLEDGER_API_KEY: dev-secret
+      FERRISLEDGER_API_KEY: "${FERRISLEDGER_API_KEY:?Set FERRISLEDGER_API_KEY before running docker compose}"
       FERRISLEDGER_STORE_PATH: /data/events.jsonl
-      FERRISLEDGER_RATE_LIMIT_PER_MINUTE: "120"
+      FERRISLEDGER_RATE_LIMIT_PER_MINUTE: "${FERRISLEDGER_RATE_LIMIT_PER_MINUTE:-120}"
     volumes:
       - ./data:/data
     healthcheck:

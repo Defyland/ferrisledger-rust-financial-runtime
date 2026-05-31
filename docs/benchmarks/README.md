@@ -16,8 +16,8 @@ The baseline target is correctness-first:
 
 Measured output is stored in
 [`benchmarks/results/2026-05-30-smoke.md`](../../benchmarks/results/2026-05-30-smoke.md).
-The latest smoke result recorded p50 10.54 ms, p95 28.76 ms, p99 30.51 ms,
-1.9312 req/s, 0.00% errors, and Criterion replay mean of 292.95 us for 100
+The latest smoke result recorded p50 8.49 ms, p95 13.85 ms, p99 15.1 ms,
+1.956002 req/s, 0.00% errors, and Criterion replay mean of 320.18 us for 100
 deposits.
 
 ## Bottlenecks expected

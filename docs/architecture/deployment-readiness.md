@@ -7,8 +7,8 @@ metrics, tests, Dockerfile, Docker Compose file, and CI workflow.
 
 ## Ready for local operation
 
-- `cargo run -p ferrisledger-cli --bin ferrisledger -- serve`
-- `docker compose up --build`
+- `cargo run -p ferrisledger-cli --bin ferrisledger -- serve --api-key dev-secret`
+- `FERRISLEDGER_API_KEY=dev-secret docker compose up --build`
 - `/healthz`, `/readyz`, `/metrics`
 - `ferrisledger verify --store-path data/events.jsonl`
 

@@ -35,7 +35,7 @@ enum Commands {
         )]
         store_path: PathBuf,
         /// API key expected in x-api-key.
-        #[arg(long, env = "FERRISLEDGER_API_KEY", default_value = "dev-secret")]
+        #[arg(long, env = "FERRISLEDGER_API_KEY")]
         api_key: String,
         /// Authenticated requests allowed per API key per rolling minute.
         #[arg(
