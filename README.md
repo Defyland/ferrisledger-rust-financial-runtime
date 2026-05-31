@@ -63,7 +63,7 @@ observability are documented in [`docs/architecture`](docs/architecture).
 
 ## 6. Tech stack
 
-- Rust stable, edition 2024
+- Rust 1.95, edition 2024
 - Axum, Tokio, Tower-compatible request tests
 - Serde, thiserror, anyhow
 - Clap CLI
@@ -112,7 +112,8 @@ Coverage includes domain unit tests, property tests for money invariants,
 overflow rejection, store corruption and concurrent independent-handle tests,
 API authentication, auth-failure limiting, BOLA-style tenant isolation,
 operational endpoints, Pix/settlement/ledger request workflows, CLI smoke
-tests, runtime idempotency replay/conflict tests, worker projection tests, FFI
+tests with real multi-process store access, serialized event-contract tests,
+runtime idempotency replay/conflict tests, worker projection tests, FFI
 safety-wrapper tests, and Criterion replay benchmark compilation.
 
 ## 12. Performance benchmarks
@@ -184,6 +185,7 @@ cargo test --workspace --all-targets
 LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov \
   LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata \
   cargo llvm-cov --workspace --all-targets --fail-under-lines 85
+FERRISLEDGER_API_KEY=dev-secret-local docker compose config
 cargo bench -p ferrisledger-runtime --bench replay
 k6 run benchmarks/k6-smoke.js
 ```

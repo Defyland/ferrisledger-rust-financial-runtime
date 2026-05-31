@@ -8,11 +8,12 @@ pretending external production infrastructure exists.
 
 Fixed or raised: money arithmetic rejects overflow, idempotency keys cannot
 silently replay divergent command data, JSONL append/read/verify use local OS
-file locks, OpenAPI defines concrete event payload schemas, API keys are
-validated at startup, invalid-auth attempts are throttled separately, API and
-CLI workflows have broader executable coverage, CI enforces an 85% line
-coverage floor, and k6 load evidence records full latency percentiles plus
-CPU/RSS resource usage.
+file locks, OpenAPI defines concrete event payload schemas and Rust-side JSON
+serialization contracts, API keys are validated at startup, invalid-auth
+attempts are throttled separately, API and CLI workflows have broader
+executable coverage, CLI smoke covers real multi-process store access, CI pins
+Rust 1.95 and enforces an 85% line coverage floor, and k6 load evidence records
+full latency percentiles plus CPU/RSS resource usage.
 
 ## Commands Run
 
@@ -20,7 +21,9 @@ CPU/RSS resource usage.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Passed | No formatting diff. |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Passed | Finished dev profile without warnings. |
-| `cargo test --workspace --all-targets` | Passed | 38 Rust tests passed: API 10, CLI smoke 3, domain 5, events 1, FFI 2, rules 3, runtime 8, store 5, worker 1; benchmark compile smoke also succeeded. |
+| `cargo test --workspace --all-targets` | Passed | 41 Rust tests passed: API 10, CLI smoke 4, domain 5, events 3, FFI 2, rules 3, runtime 8, store 5, worker 1; benchmark compile smoke also succeeded. |
+| `cargo test -p ferrisledger-cli --test cli_smoke` | Passed | CLI smoke covers verify, open/deposit/replay, weak-key serve rejection, and eight concurrent OS child processes appending to one locked JSONL store. |
+| `cargo test -p ferrisledger-events --all-targets` | Passed | Event tests lock all serialized payload `kind`/`data` shapes and the envelope's redundant `event_type` plus typed payload shape. |
 | `cargo build --release -p ferrisledger-cli` | Passed | Release binary rebuilt after API-key and CLI changes. |
 | `target/release/ferrisledger serve --help` | Passed | Usage shows required `--api-key <API_KEY>`, no default API key, and `--auth-failure-rate-limit-per-minute`. |
 | `cargo bench -p ferrisledger-runtime --bench replay -- --sample-size 10` | Passed | `replay_100_deposits` measured 256.12 us to 281.14 us, point estimate 268.82 us. |
@@ -33,7 +36,7 @@ CPU/RSS resource usage.
 | `npx @redocly/cli lint openapi.yaml` | Passed | OpenAPI description valid with concrete event payload schemas and no warnings. |
 | `cargo audit` | Passed | Cargo.lock scanned with no vulnerabilities reported. |
 | `LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata cargo llvm-cov --workspace --all-targets --lcov --output-path /tmp/ferrisledger-lcov-final.info --fail-under-lines 85` | Passed | CI-equivalent local coverage gate passed. |
-| `LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata cargo llvm-cov report --summary-only` | Passed | Total coverage: 87.37% regions, 84.38% functions, 90.32% lines. |
+| `LLVM_COV=/opt/homebrew/opt/llvm/bin/llvm-cov LLVM_PROFDATA=/opt/homebrew/opt/llvm/bin/llvm-profdata cargo llvm-cov report --summary-only` | Passed | Total coverage: 87.95% regions, 84.79% functions, 90.86% lines. |
 | `docker build -t ferrisledger:local .` | Passed | Image built successfully after removing the false-positive auth-failure ENV secret warning. |
 | `FERRISLEDGER_API_KEY=dev-secret-local docker compose config` | Passed | Compose renders with caller-provided API key, authenticated rate limit, auth-failure rate limit, and local store path. |
 | `git diff --check` | Passed | No whitespace errors after report updates. |
@@ -46,7 +49,8 @@ CPU/RSS resource usage.
 - Money arithmetic rejects overflow and underflow at the domain boundary.
 - API has valid OpenAPI 3.1, versioned endpoints, API-key auth, 409 behavior,
   429 behavior, idempotency replay/conflict behavior, context headers,
-  concrete event payload schemas, and standardized errors.
+  concrete event payload schemas, Rust serialization tests for all event
+  variants, and standardized errors.
 - API key startup behavior matches the secret-management docs: no CLI or
   Docker image default key, explicit runtime configuration required, weak keys
   rejected, and auth-failure attempts throttled separately.
@@ -54,8 +58,9 @@ CPU/RSS resource usage.
   Pix transfer reservation, settlement, ledger evidence, event listing,
   snapshots, tenant isolation, auth, rate limiting, idempotency conflict, and
   request/correlation headers.
-- CLI smoke tests cover local verify, open/deposit/replay, and weak-key serve
-  rejection through the built binary.
+- CLI smoke tests cover local verify, open/deposit/replay, weak-key serve
+  rejection, and shared-store multi-process append behavior through the built
+  binary.
 - Store detects corruption through JSON decoding and checksum verification,
   coordinates local same-host access with OS file locks, and rejects duplicate
   idempotency keys.
@@ -63,10 +68,10 @@ CPU/RSS resource usage.
   audit logs, request IDs, correlation IDs, dashboard JSON, and runbooks.
 - Benchmarks include current smoke, load, and replay measurements plus
   load/stress/spike assets with explicit p99 output.
-- Coverage now runs locally without `rustup`; CI enforces an 85% line coverage
-  floor.
+- Coverage now runs locally without `rustup`; CI pins Rust 1.95 and enforces an
+  85% line coverage floor.
 - CI defines format, lint, tests, coverage threshold, audit, OpenAPI, and Docker
-  build gates.
+  Compose config plus Docker build gates.
 
 ## Partial Criteria
 

@@ -15,6 +15,7 @@ observability assets, tests, benchmarks, and runbooks.
 | Idempotency replay ignored divergent command payloads | Added semantic comparison before replay and `409 idempotency_conflict` on mismatch. |
 | JSONL coordination relied on in-process mutex only | Added OS file locks for local same-host append/read/verify and a concurrent independent-handle test. |
 | OpenAPI modeled event payload as generic `object` | Added concrete `oneOf` schemas for all event payload variants. |
+| Event contract drift was still possible between OpenAPI and Rust serialization | Added Rust-side serialization contract tests for every event payload variant and the envelope payload shape. |
 | Local coverage was marked blocked | Ran coverage with Homebrew LLVM via `LLVM_COV` and `LLVM_PROFDATA`. |
 | CPU/memory benchmark evidence was missing | Recorded a k6 load baseline with server CPU/RSS samples. |
 | Spec evidence lagged the actual review blockers | Added a hardening spec and refreshed the senior-readiness matrix. |
@@ -22,7 +23,9 @@ observability assets, tests, benchmarks, and runbooks.
 | Invalid-auth attempts only failed individually | Added a separate auth-failure rolling-window limiter and CLI/env configuration for its threshold. |
 | API tests were too narrow for the OpenAPI surface | Added operational and money-flow request coverage for health, readiness, metrics, events, Pix, settlement, and ledger entries. |
 | CLI behavior lacked executable operator evidence | Added binary smoke tests for verify, open/deposit/replay, and weak-key serve rejection. |
-| Coverage was reportable but not enforced | Raised CI coverage to an 85% line floor and verified 90.32% line coverage locally. |
+| Store locking evidence still stopped short of real OS processes | Added a CLI smoke test that launches eight child processes appending distinct account streams to the same JSONL store. |
+| Coverage was reportable but not enforced | Raised CI coverage to an 85% line floor and verified 90.86% line coverage locally. |
+| CI still used floating `stable` instead of the declared MSRV | Pinned local toolchain and CI to Rust 1.95 and added Compose config validation to the CI gate. |
 | k6 trend output did not make p99 uniformly visible | Added full latency percentile reporting to smoke/load/stress/spike assets and refreshed measured results. |
 
 ## What Is Strong Now
@@ -41,11 +44,12 @@ observability assets, tests, benchmarks, and runbooks.
 - Benchmarks now include load latency, throughput, error rate, server CPU, and
   server RSS evidence.
 - Local coverage is executable without `rustup` by pointing to Homebrew LLVM
-  tools, and CI enforces an 85% line floor.
+  tools, and CI enforces an 85% line floor on Rust 1.95.
 - Secret handling avoids baked-in API keys for the CLI and Docker image, rejects
   weak configured keys, and throttles repeated invalid-auth attempts.
 - API and CLI tests now cover the operational paths a reviewer is likely to
-  exercise manually.
+  exercise manually, including typed event serialization and real multi-process
+  JSONL append coordination.
 
 ## Best Next Moves To Impress
 

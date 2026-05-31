@@ -14,6 +14,7 @@ the code that actually runs.
 - `Dockerfile`
 - `docker-compose.yml`
 - `Cargo.lock`
+- `rust-toolchain.toml`
 - `README.md`
 - `crates/ferrisledger-domain/src/lib.rs`
 - `crates/ferrisledger-runtime/src/lib.rs`
@@ -22,6 +23,8 @@ the code that actually runs.
 - `crates/ferrisledger-cli/Cargo.toml`
 - `crates/ferrisledger-cli/src/main.rs`
 - `crates/ferrisledger-cli/tests/cli_smoke.rs`
+- `crates/ferrisledger-events/Cargo.toml`
+- `crates/ferrisledger-events/src/lib.rs`
 - `benchmarks/k6-smoke.js`
 - `benchmarks/k6-load.js`
 - `benchmarks/k6-stress.js`
@@ -53,14 +56,14 @@ the code that actually runs.
 | --- | --- | --- |
 | Money arithmetic cannot wrap | Use checked add/subtract and expose `money_arithmetic_overflow` | Domain/API tests and `cargo test --workspace --all-targets` |
 | Idempotency key reuse is semantically safe | Compare reused keys against command type, tenant, account, amount, currency, Pix beneficiary, settlement ID, ledger ID, reason, and related event | Runtime/API conflict tests |
-| Store protects local append/verify races | Use advisory OS file locks for append/read/verify and reject duplicate idempotency keys in the store | Store concurrency and duplicate-key tests |
+| Store protects local append/verify races | Use advisory OS file locks for append/read/verify and reject duplicate idempotency keys in the store | Store concurrency, duplicate-key, and real CLI multi-process tests |
 | API keys are not weak by default | Reject weak configured API keys, expose auth-failure throttling, and avoid Docker image secret defaults | API config/auth tests, CLI help, Docker build |
 | Authentication abuse is locally bounded | Add a separate in-process limiter for missing/wrong API-key attempts | API auth-failure rate-limit test |
 | HTTP endpoint coverage reflects the contract | Add request tests for health, readiness, metrics, event listing, Pix, settlement, and ledger workflows | `cargo test -p ferrisledger-api --all-targets` |
-| CLI workflows have executable evidence | Add binary smoke tests for verify, open/deposit/replay, and weak-key serve rejection | `cargo test -p ferrisledger-cli --all-targets` |
-| OpenAPI event payloads are concrete | Define event payload `oneOf` schemas and add `409` responses for repeatable command conflicts | `npx @redocly/cli lint openapi.yaml` |
+| CLI workflows have executable evidence | Add binary smoke tests for verify, open/deposit/replay, weak-key serve rejection, and shared-store multi-process access | `cargo test -p ferrisledger-cli --all-targets` |
+| OpenAPI event payloads are concrete | Define event payload `oneOf` schemas and add `409` responses for repeatable command conflicts | `npx @redocly/cli lint openapi.yaml` and `cargo test -p ferrisledger-events --all-targets` |
 | k6 evidence includes p99 and resource notes | Emit full trend stats from smoke/load/stress/spike scripts and record load CPU/RSS | k6 inspect commands and `benchmarks/results/2026-05-31-load.md` |
-| Local coverage is enforced, not just reported | Use Homebrew LLVM binaries and add an 85% line-coverage floor in CI | `cargo llvm-cov --workspace --all-targets --lcov --output-path /tmp/ferrisledger-lcov-final.info --fail-under-lines 85` |
+| Local coverage is enforced, not just reported | Use Homebrew LLVM binaries, pin the Rust 1.95 toolchain, and add an 85% line-coverage floor in CI | `cargo llvm-cov --workspace --all-targets --lcov --output-path /tmp/ferrisledger-lcov-final.info --fail-under-lines 85` |
 | Senior evidence is current and honest | Update spec matrix, benchmark docs, security docs, case-study references, and verification report | File audit and final report |
 
 ## Verification Commands
@@ -69,6 +72,8 @@ the code that actually runs.
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
+cargo test -p ferrisledger-cli --test cli_smoke
+cargo test -p ferrisledger-events --all-targets
 cargo build --release -p ferrisledger-cli
 target/release/ferrisledger serve --help
 cargo bench -p ferrisledger-runtime --bench replay -- --sample-size 10
