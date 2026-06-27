@@ -488,6 +488,7 @@ dependencies = [
  "ferrisledger-domain",
  "ferrisledger-events",
  "fs2",
+ "proptest",
  "serde",
  "serde_json",
  "tempfile",

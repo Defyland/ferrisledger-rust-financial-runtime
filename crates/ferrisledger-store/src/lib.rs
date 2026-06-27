@@ -1,6 +1,7 @@
 //! Append-only event storage with checksum verification.
 
 use std::{
+    collections::HashMap,
     fs::{File, OpenOptions},
     io::{BufRead, BufReader, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -38,6 +39,38 @@ pub enum StoreError {
     /// A decoded event had a duplicate idempotency key.
     #[error("duplicate idempotency key {0}")]
     DuplicateIdempotencyKey(IdempotencyKey),
+    /// A decoded log record duplicated an existing event ID.
+    #[error(
+        "corrupt event log at line {line}: duplicate event id {event_id} first seen at line {first_line}"
+    )]
+    CorruptDuplicateEventId {
+        /// One-based line number where the duplicate was found.
+        line: usize,
+        /// One-based line number where the original event ID first appeared.
+        first_line: usize,
+        /// Duplicated event identifier.
+        event_id: EventId,
+    },
+    /// A decoded log record duplicated an existing idempotency key.
+    #[error(
+        "corrupt event log at line {line}: duplicate idempotency key {idempotency_key} first seen at line {first_line}"
+    )]
+    CorruptDuplicateIdempotencyKey {
+        /// One-based line number where the duplicate was found.
+        line: usize,
+        /// One-based line number where the original idempotency key first appeared.
+        first_line: usize,
+        /// Duplicated idempotency key.
+        idempotency_key: IdempotencyKey,
+    },
+    /// A decoded log record violated the persisted envelope contract.
+    #[error("corrupt event log at line {line}: {reason}")]
+    InvalidEventContract {
+        /// One-based line number where the invalid record was found.
+        line: usize,
+        /// Human-readable contract failure reason.
+        reason: String,
+    },
     /// Optimistic stream version check failed.
     #[error("stream version conflict: expected {expected}, actual {actual}")]
     VersionConflict {
@@ -206,6 +239,7 @@ impl EventStore for FileEventStore {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredRecord {
     checksum: u32,
     envelope: EventEnvelope,
@@ -249,13 +283,42 @@ fn read_records_from_file(file: &mut File) -> Result<Vec<StoredRecord>, StoreErr
     file.seek(SeekFrom::Start(0))?;
     let reader = BufReader::new(file);
     let mut records = Vec::new();
+    let mut seen_event_ids = HashMap::new();
+    let mut seen_idempotency_keys = HashMap::new();
     for (idx, line) in reader.lines().enumerate() {
+        let line_number = idx + 1;
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
         let record: StoredRecord = serde_json::from_str(&line)?;
-        record.verify(idx + 1)?;
+        record.verify(line_number)?;
+        record
+            .envelope
+            .validate_persisted()
+            .map_err(|error| StoreError::InvalidEventContract {
+                line: line_number,
+                reason: error.to_string(),
+            })?;
+        if let Some(first_line) =
+            seen_event_ids.insert(record.envelope.event_id.clone(), line_number)
+        {
+            return Err(StoreError::CorruptDuplicateEventId {
+                line: line_number,
+                first_line,
+                event_id: record.envelope.event_id.clone(),
+            });
+        }
+        if let Some(idempotency_key) = record.envelope.payload.idempotency_key()
+            && let Some(first_line) =
+                seen_idempotency_keys.insert(idempotency_key.clone(), line_number)
+        {
+            return Err(StoreError::CorruptDuplicateIdempotencyKey {
+                line: line_number,
+                first_line,
+                idempotency_key: idempotency_key.clone(),
+            });
+        }
         records.push(record);
     }
     Ok(records)
@@ -275,10 +338,36 @@ mod tests {
     use ferrisledger_events::{
         AccountOpened, EventEnvelope, EventMetadata, FinancialEvent, MoneyDeposited,
     };
+    use proptest::prelude::*;
     use std::{
         sync::{Arc, Barrier},
         thread,
     };
+
+    fn append_raw_record(path: &Path, record: &StoredRecord) {
+        let mut file = OpenOptions::new().append(true).open(path).expect("open");
+        serde_json::to_writer(&mut file, record).expect("serialize");
+        file.write_all(b"\n").expect("newline");
+    }
+
+    fn overwrite_raw_bytes(path: &Path, bytes: &[u8]) {
+        std::fs::write(path, bytes).expect("write");
+    }
+
+    fn assert_corrupt_read<T: std::fmt::Debug>(result: Result<T, StoreError>, context: &str) {
+        assert!(
+            matches!(
+                result,
+                Err(StoreError::Io(_))
+                    | Err(StoreError::Json(_))
+                    | Err(StoreError::ChecksumMismatch { .. })
+                    | Err(StoreError::InvalidEventContract { .. })
+                    | Err(StoreError::CorruptDuplicateEventId { .. })
+                    | Err(StoreError::CorruptDuplicateIdempotencyKey { .. })
+            ),
+            "expected corruption, got {result:?}; {context}"
+        );
+    }
 
     fn opened_event() -> EventEnvelope {
         opened_event_for("account_001")
@@ -392,6 +481,172 @@ mod tests {
         assert!(matches!(
             store.verify(),
             Err(StoreError::Json(_)) | Err(StoreError::ChecksumMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn verify_rejects_unknown_optional_envelope_field_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("events.jsonl");
+        let store = FileEventStore::new(&path);
+        store.append(opened_event(), Some(0)).expect("append");
+
+        let raw = std::fs::read_to_string(&path).expect("read");
+        let corrupted = raw.replacen("\"causation_id\":null", "\" ausation_id\":null", 1);
+        std::fs::write(&path, corrupted).expect("write");
+
+        assert!(matches!(store.verify(), Err(StoreError::Json(_))));
+        assert!(matches!(store.read_all(), Err(StoreError::Json(_))));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn single_byte_mutation_of_persisted_record_fails_closed(
+            position in any::<usize>(),
+            replacement in any::<u8>(),
+        ) {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("events.jsonl");
+            let store = FileEventStore::new(&path);
+            store.append(opened_event(), Some(0)).expect("append");
+
+            let mut raw = std::fs::read(&path).expect("read");
+            let record_len = raw
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .expect("newline");
+            let byte_index = position % record_len;
+            let original = raw[byte_index];
+            raw[byte_index] = if replacement == original {
+                replacement.wrapping_add(1)
+            } else {
+                replacement
+            };
+            overwrite_raw_bytes(&path, &raw);
+            let context = format!(
+                "index={byte_index}, original_byte={original}, replacement_byte={}, raw={}",
+                raw[byte_index],
+                String::from_utf8_lossy(&raw),
+            );
+
+            assert_corrupt_read(store.verify(), &context);
+            assert_corrupt_read(store.read_all(), &context);
+        }
+    }
+
+    #[test]
+    fn verify_rejects_duplicate_event_id_in_persisted_log() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("events.jsonl");
+        let store = FileEventStore::new(&path);
+        let event = opened_event();
+        let stream_id = event.stream_id.clone();
+        store.append(event, Some(0)).expect("append");
+
+        let duplicate = serde_json::from_str::<StoredRecord>(
+            std::fs::read_to_string(&path)
+                .expect("read")
+                .lines()
+                .last()
+                .expect("line"),
+        )
+        .expect("record");
+        append_raw_record(&path, &duplicate);
+
+        assert!(matches!(
+            store.verify(),
+            Err(StoreError::CorruptDuplicateEventId {
+                line: 2,
+                first_line: 1,
+                ..
+            })
+        ));
+        assert!(matches!(
+            store.read_stream(&stream_id),
+            Err(StoreError::CorruptDuplicateEventId {
+                line: 2,
+                first_line: 1,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn verify_rejects_rechecksummed_stream_id_drift() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("events.jsonl");
+        let store = FileEventStore::new(&path);
+        store.append(opened_event(), Some(0)).expect("append");
+
+        let mut record = serde_json::from_str::<StoredRecord>(
+            std::fs::read_to_string(&path)
+                .expect("read")
+                .lines()
+                .last()
+                .expect("line"),
+        )
+        .expect("record");
+        let drift_account = AccountId::new("account_999").expect("account");
+        record.envelope.stream_id =
+            account_stream_id(record.envelope.payload.tenant_id(), &drift_account)
+                .expect("drift stream");
+        record.checksum = checksum(&record.envelope).expect("checksum");
+        let mut bytes = serde_json::to_vec(&record).expect("serialize");
+        bytes.push(b'\n');
+        overwrite_raw_bytes(&path, &bytes);
+
+        assert!(matches!(
+            store.verify(),
+            Err(StoreError::InvalidEventContract { line: 1, reason })
+                if reason.contains("stream_id")
+        ));
+        assert!(matches!(
+            store.read_all(),
+            Err(StoreError::InvalidEventContract { line: 1, reason })
+                if reason.contains("stream_id")
+        ));
+    }
+
+    #[test]
+    fn verify_rejects_duplicate_idempotency_key_in_persisted_log() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("events.jsonl");
+        let store = FileEventStore::new(&path);
+
+        store.append(opened_event(), Some(0)).expect("open");
+        store
+            .append(deposit_event("idem_001"), Some(1))
+            .expect("deposit");
+
+        let mut duplicate = serde_json::from_str::<StoredRecord>(
+            std::fs::read_to_string(&path)
+                .expect("read")
+                .lines()
+                .last()
+                .expect("line"),
+        )
+        .expect("record");
+        duplicate.envelope.event_id = EventId::new("evt_tampered").expect("event id");
+        duplicate.checksum = checksum(&duplicate.envelope).expect("checksum");
+        append_raw_record(&path, &duplicate);
+
+        assert!(matches!(
+            store.verify(),
+            Err(StoreError::CorruptDuplicateIdempotencyKey {
+                line: 3,
+                first_line: 2,
+                ..
+            })
+        ));
+        assert!(matches!(
+            store.read_all(),
+            Err(StoreError::CorruptDuplicateIdempotencyKey {
+                line: 3,
+                first_line: 2,
+                ..
+            })
         ));
     }
 

@@ -5,7 +5,7 @@ Use this runbook when a FerrisLedger segment fails checksum verification or repl
 ## Triage
 
 - Identify the segment file and offset that failed verification.
-- Confirm whether the failure is a partial write, checksum mismatch, or unsupported schema version.
+- Confirm whether the failure is a partial write, checksum mismatch, persisted envelope-contract drift, duplicate event ID, duplicate idempotency key, or unsupported schema version.
 - Check whether earlier events in the same stream still deserialize correctly.
 - Verify whether a snapshot can reconstruct state before the corrupt boundary.
 

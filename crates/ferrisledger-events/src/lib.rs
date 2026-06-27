@@ -2,7 +2,7 @@
 
 use ferrisledger_domain::{
     AccountId, CorrelationId, EventId, IdempotencyKey, LedgerEntryId, Money, SettlementId,
-    StreamId, TenantId,
+    StreamId, TenantId, account_stream_id,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -15,6 +15,25 @@ pub enum EventError {
     /// Event ID generation created an invalid domain ID.
     #[error("invalid generated event id: {0}")]
     InvalidGeneratedId(String),
+    /// Persisted record uses an unsupported schema version.
+    #[error("unsupported schema version {actual}, expected 1")]
+    UnsupportedSchemaVersion {
+        /// Unsupported version found in storage.
+        actual: u16,
+    },
+    /// Persisted redundant envelope field drifted from the typed payload.
+    #[error("persisted {field} mismatch: expected {expected}, got {actual}")]
+    PersistedFieldMismatch {
+        /// Envelope field that diverged from the payload-derived value.
+        field: &'static str,
+        /// Canonical value derived from the payload.
+        expected: String,
+        /// Actual value found in storage.
+        actual: String,
+    },
+    /// Persisted payload could not derive its canonical stream contract.
+    #[error("invalid persisted contract: {0}")]
+    InvalidPersistedContract(String),
 }
 
 /// Canonical event types emitted by the runtime.
@@ -49,6 +68,7 @@ impl EventType {
 
 /// Event envelope with CloudEvents-like operational metadata.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventEnvelope {
     /// Unique event identifier.
     pub event_id: EventId,
@@ -90,6 +110,46 @@ impl EventEnvelope {
             producer: metadata.producer,
             payload,
         })
+    }
+
+    /// Verifies that persisted redundant fields still match the typed payload.
+    pub fn validate_persisted(&self) -> Result<(), EventError> {
+        if self.schema_version != 1 {
+            return Err(EventError::UnsupportedSchemaVersion {
+                actual: self.schema_version,
+            });
+        }
+
+        let expected_event_type = self.payload.event_type();
+        if self.event_type != expected_event_type {
+            return Err(EventError::PersistedFieldMismatch {
+                field: "event_type",
+                expected: expected_event_type.as_str().to_string(),
+                actual: self.event_type.as_str().to_string(),
+            });
+        }
+
+        let expected_tenant_id = self.payload.tenant_id();
+        if &self.tenant_id != expected_tenant_id {
+            return Err(EventError::PersistedFieldMismatch {
+                field: "tenant_id",
+                expected: expected_tenant_id.as_str().to_string(),
+                actual: self.tenant_id.as_str().to_string(),
+            });
+        }
+
+        let expected_stream_id =
+            account_stream_id(self.payload.tenant_id(), self.payload.account_id())
+                .map_err(|error| EventError::InvalidPersistedContract(error.to_string()))?;
+        if self.stream_id != expected_stream_id {
+            return Err(EventError::PersistedFieldMismatch {
+                field: "stream_id",
+                expected: expected_stream_id.as_str().to_string(),
+                actual: self.stream_id.as_str().to_string(),
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -191,6 +251,7 @@ impl FinancialEvent {
 
 /// Payload for `account_opened`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountOpened {
     /// Tenant partition key.
     pub tenant_id: TenantId,
@@ -204,6 +265,7 @@ pub struct AccountOpened {
 
 /// Payload for `money_deposited`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MoneyDeposited {
     /// Tenant partition key.
     pub tenant_id: TenantId,
@@ -217,6 +279,7 @@ pub struct MoneyDeposited {
 
 /// Payload for `pix_transfer_requested`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PixTransferRequested {
     /// Tenant partition key.
     pub tenant_id: TenantId,
@@ -232,6 +295,7 @@ pub struct PixTransferRequested {
 
 /// Payload for `settlement_executed`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SettlementExecuted {
     /// Tenant partition key.
     pub tenant_id: TenantId,
@@ -257,6 +321,7 @@ pub enum LedgerDirection {
 
 /// Payload for `ledger_entry_created`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LedgerEntryCreated {
     /// Tenant partition key.
     pub tenant_id: TenantId,
@@ -321,6 +386,36 @@ mod tests {
         assert_eq!(envelope.event_type, EventType::AccountOpened);
         assert_eq!(envelope.schema_version, 1);
         assert_eq!(envelope.producer, "ferrisledger");
+    }
+
+    #[test]
+    fn rejects_persisted_event_type_drift() {
+        let tenant_id = tenant_id();
+        let account_id = account_id();
+        let payload = FinancialEvent::AccountOpened(AccountOpened {
+            tenant_id: tenant_id.clone(),
+            account_id: account_id.clone(),
+            currency: "BRL".to_string(),
+            account_holder_name: "Ada Lovelace".to_string(),
+        });
+        let metadata = EventMetadata::new(
+            account_stream_id(&tenant_id, &account_id).expect("stream"),
+            CorrelationId::new("corr_001").expect("correlation"),
+        );
+
+        let mut envelope = EventEnvelope::new(payload, metadata).expect("envelope");
+        envelope.event_type = EventType::MoneyDeposited;
+
+        assert_eq!(
+            envelope
+                .validate_persisted()
+                .expect_err("persisted event type must match payload"),
+            EventError::PersistedFieldMismatch {
+                field: "event_type",
+                expected: "account_opened".to_string(),
+                actual: "money_deposited".to_string(),
+            }
+        );
     }
 
     #[test]

@@ -611,6 +611,11 @@ impl ApiError {
             Self::Runtime(RuntimeError::Store(StoreError::ChecksumMismatch { .. })) => {
                 "event_log_corrupt"
             }
+            Self::Runtime(RuntimeError::Store(
+                StoreError::InvalidEventContract { .. }
+                | StoreError::CorruptDuplicateEventId { .. }
+                | StoreError::CorruptDuplicateIdempotencyKey { .. },
+            )) => "event_log_corrupt",
             Self::Runtime(_) => "runtime_error",
             Self::Telemetry(_) => "telemetry_error",
             Self::Configuration(_) => "configuration_error",
@@ -694,6 +699,9 @@ fn status_for_runtime_error(error: &RuntimeError) -> StatusCode {
         RuntimeError::Rule(RuleError::Domain(DomainError::InvalidIdentifier(_)))
         | RuntimeError::InvalidStream(_) => StatusCode::BAD_REQUEST,
         RuntimeError::Store(StoreError::ChecksumMismatch { .. })
+        | RuntimeError::Store(StoreError::InvalidEventContract { .. })
+        | RuntimeError::Store(StoreError::CorruptDuplicateEventId { .. })
+        | RuntimeError::Store(StoreError::CorruptDuplicateIdempotencyKey { .. })
         | RuntimeError::Store(StoreError::Json(_))
         | RuntimeError::Store(StoreError::Io(_))
         | RuntimeError::Index(_)
@@ -1039,6 +1047,47 @@ mod tests {
         assert_eq!(metrics.0, StatusCode::OK);
         assert!(metrics.1.contains("ferrisledger_http_requests_total"));
         assert!(metrics.1.contains("ferrisledger_event_store_records"));
+    }
+
+    #[tokio::test]
+    async fn readiness_fails_when_the_persisted_log_has_duplicate_event_ids() {
+        use std::io::Write as _;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("events.jsonl");
+        let runtime = RuntimeService::file(path.clone());
+        runtime
+            .execute(
+                RuntimeCommand::OpenAccount {
+                    tenant_id: TenantId::new("tenant_001").expect("tenant"),
+                    account_id: AccountId::new("account_001").expect("account"),
+                    currency: "BRL".to_string(),
+                    account_holder_name: "Ada Lovelace".to_string(),
+                },
+                CorrelationId::new("corr_001").expect("correlation"),
+            )
+            .expect("open");
+
+        let duplicate = std::fs::read_to_string(&path)
+            .expect("read")
+            .lines()
+            .last()
+            .expect("line")
+            .to_string();
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("open");
+        writeln!(file, "{duplicate}").expect("duplicate");
+
+        let readiness = get_public_json(
+            router(ApiConfig::new(path, API_KEY)).expect("router"),
+            "/readyz",
+        )
+        .await;
+
+        assert_eq!(readiness.0, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(readiness.1["error"]["code"], "event_log_corrupt");
     }
 
     #[test]

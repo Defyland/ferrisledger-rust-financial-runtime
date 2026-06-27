@@ -8,8 +8,12 @@ pretending external production infrastructure exists.
 
 Fixed or raised: money arithmetic rejects overflow, idempotency keys cannot
 silently replay divergent command data, JSONL append/read/verify use local OS
-file locks, OpenAPI defines concrete event payload schemas and Rust-side JSON
-serialization contracts, API keys are validated at startup, invalid-auth
+file locks, persisted duplicate event IDs and duplicate idempotency keys fail
+closed, unknown event-envelope fields no longer deserialize silently, a store
+property test mutates persisted record bytes to prove fail-closed parser
+behavior, recomputed-checksum envelope drift between payload and persisted
+`stream_id` now fails closed, OpenAPI defines concrete event payload schemas and
+Rust-side JSON serialization contracts, API keys are validated at startup, invalid-auth
 attempts are throttled separately, API and CLI workflows have broader
 executable coverage, CLI smoke covers real multi-process store access, CI pins
 Rust 1.95 and enforces an 85% line coverage floor, and k6 load evidence records
@@ -21,7 +25,8 @@ full latency percentiles plus CPU/RSS resource usage.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Passed | No formatting diff. |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Passed | Finished dev profile without warnings. |
-| `cargo test --workspace --all-targets` | Passed | 41 Rust tests passed: API 10, CLI smoke 4, domain 5, events 3, FFI 2, rules 3, runtime 8, store 5, worker 1; benchmark compile smoke also succeeded. |
+| `cargo test --workspace --all-targets` | Passed | 46 Rust tests passed: API 11, CLI smoke 4, domain 5, events 3, FFI 2, rules 3, runtime 8, store 9, worker 1; benchmark compile smoke also succeeded. |
+| `cargo test -p ferrisledger-store --all-targets` | Passed | Store tests now cover checksum corruption, persisted duplicate event IDs, persisted duplicate idempotency keys, unknown optional envelope-field names, recomputed-checksum `stream_id` drift rejection, concurrent same-host append coordination, and property-based single-byte mutation rejection. |
 | `cargo test -p ferrisledger-cli --test cli_smoke` | Passed | CLI smoke covers verify, open/deposit/replay, weak-key serve rejection, and eight concurrent OS child processes appending to one locked JSONL store. |
 | `cargo test -p ferrisledger-events --all-targets` | Passed | Event tests lock all serialized payload `kind`/`data` shapes and the envelope's redundant `event_type` plus typed payload shape. |
 | `cargo build --release -p ferrisledger-cli` | Passed | Release binary rebuilt after API-key and CLI changes. |
@@ -61,8 +66,10 @@ full latency percentiles plus CPU/RSS resource usage.
 - CLI smoke tests cover local verify, open/deposit/replay, weak-key serve
   rejection, and shared-store multi-process append behavior through the built
   binary.
-- Store detects corruption through JSON decoding and checksum verification,
-  coordinates local same-host access with OS file locks, and rejects duplicate
+- Store detects corruption through JSON decoding, checksum verification,
+  deny-unknown-field event parsing, property-based single-byte mutation tests,
+  persisted envelope-contract validation, coordinates local same-host access
+  with OS file locks, and rejects duplicate event IDs and duplicate
   idempotency keys.
 - Observability includes health, readiness, Prometheus metrics, structured
   audit logs, request IDs, correlation IDs, dashboard JSON, and runbooks.

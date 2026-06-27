@@ -49,8 +49,9 @@ events.
 - API-key validation plus separate in-process rate limits for authenticated
   traffic and repeated authentication failures.
 - Prometheus metrics, structured JSON tracing, health and readiness endpoints.
-- Property tests, API tests, corruption tests, auth tests, worker tests, and a
-  Criterion replay benchmark.
+- Property tests for domain arithmetic and event-log mutation boundaries, API
+  tests, corruption tests, auth tests, worker tests, and a Criterion replay
+  benchmark.
 
 ## 5. Architecture overview
 
@@ -95,7 +96,8 @@ indexes from persisted events.
 The MVP uses a single JSONL event log. Each line stores `{ checksum, envelope }`.
 The checksum is computed from the canonical serialized envelope. Stream version
 checks provide optimistic concurrency, append/read/verify use local OS file
-locks for same-host coordination, duplicate idempotency keys are rejected, and
+locks for same-host coordination, duplicate idempotency keys are rejected,
+persisted redundant envelope fields must still match the typed payload, and
 replay detects corrupt or invalid records before returning projections.
 Transaction boundaries and migration assumptions are documented in
 [`docs/architecture/data-consistency.md`](docs/architecture/data-consistency.md).
@@ -108,13 +110,14 @@ Run:
 cargo test --workspace --all-targets
 ```
 
-Coverage includes domain unit tests, property tests for money invariants,
-overflow rejection, store corruption and concurrent independent-handle tests,
-API authentication, auth-failure limiting, BOLA-style tenant isolation,
-operational endpoints, Pix/settlement/ledger request workflows, CLI smoke
-tests with real multi-process store access, serialized event-contract tests,
-runtime idempotency replay/conflict tests, worker projection tests, FFI
-safety-wrapper tests, and Criterion replay benchmark compilation.
+Coverage includes domain unit tests, property tests for money invariants and
+single-byte event-log mutation rejection, overflow rejection, store corruption
+and concurrent independent-handle tests, API authentication, auth-failure
+limiting, BOLA-style tenant isolation, operational endpoints,
+Pix/settlement/ledger request workflows, CLI smoke tests with real
+multi-process store access, serialized event-contract tests, runtime
+idempotency replay/conflict tests, worker projection tests, FFI safety-wrapper
+tests, and Criterion replay benchmark compilation.
 
 ## 12. Performance benchmarks
 
@@ -192,7 +195,8 @@ k6 run benchmarks/k6-smoke.js
 
 ## 18. Failure scenarios
 
-- Corrupt event-log line: readiness and replay fail with checksum/JSON errors.
+- Corrupt or tampered event-log record: readiness and replay fail with
+  checksum, decode, contract-drift, or duplicate-record errors.
 - Duplicate command retry: idempotency returns the original event.
 - Idempotency key reused with different command data: command is rejected with
   conflict.
