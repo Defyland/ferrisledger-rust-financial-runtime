@@ -163,7 +163,60 @@ variables and documented in [`docs/security`](docs/security).
   [`docs/spec-driven`](docs/spec-driven), including a technical review of what
   was improved and what remains before production.
 
-## 16. How to run locally
+## 16. How to evaluate this repo in 5 minutes
+
+1. Prove the workspace is green:
+
+```bash
+cargo test --workspace --all-targets
+```
+
+2. In one terminal, start the API with a disposable event log:
+
+```bash
+cargo run -p ferrisledger-cli -- serve \
+  --bind 127.0.0.1:18080 \
+  --store-path /tmp/ferrisledger-quick-eval.jsonl \
+  --api-key dev-secret-local \
+  --rate-limit-per-minute 120
+```
+
+3. In a second terminal, prove health, authenticated writes, snapshot rebuild,
+   persisted-log verification, and deterministic replay:
+
+```bash
+curl -s http://127.0.0.1:18080/healthz
+curl -s http://127.0.0.1:18080/readyz
+curl -s http://127.0.0.1:18080/v1/accounts \
+  -H 'content-type: application/json' \
+  -H 'x-api-key: dev-secret-local' \
+  -d '{"tenant_id":"tenant_001","account_id":"account_001","currency":"BRL","account_holder_name":"Ada Lovelace","correlation_id":"corr_001"}'
+curl -s http://127.0.0.1:18080/v1/accounts/account_001/deposits \
+  -H 'content-type: application/json' \
+  -H 'x-api-key: dev-secret-local' \
+  -d '{"tenant_id":"tenant_001","amount_cents":2500,"currency":"BRL","idempotency_key":"deposit_001","correlation_id":"corr_002"}'
+curl -s 'http://127.0.0.1:18080/v1/accounts/account_001/snapshot?tenant_id=tenant_001' \
+  -H 'x-api-key: dev-secret-local'
+cargo run -q -p ferrisledger-cli -- verify --store-path /tmp/ferrisledger-quick-eval.jsonl
+cargo run -q -p ferrisledger-cli -- replay \
+  --store-path /tmp/ferrisledger-quick-eval.jsonl \
+  --tenant-id tenant_001 \
+  --account-id account_001
+```
+
+What those checks prove:
+
+- `healthz` and `readyz` prove the runtime boots and exposes operational
+  endpoints.
+- The account-open and deposit requests prove API-key auth, validation,
+  append-only persistence, and command execution.
+- The snapshot should report version `2` and balance `2500 BRL`, proving state
+  rebuild from events.
+- `verify` proves the stored JSONL log passes integrity checks.
+- `replay` proves the CLI can deterministically rebuild account state from the
+  persisted event stream.
+
+## 17. How to run locally
 
 ```bash
 cargo run -p ferrisledger-cli -- serve \
@@ -179,7 +232,7 @@ Docker:
 FERRISLEDGER_API_KEY=dev-secret-local docker compose up --build
 ```
 
-## 17. How to run tests
+## 18. How to run tests
 
 ```bash
 cargo fmt --all -- --check
@@ -193,7 +246,7 @@ cargo bench -p ferrisledger-runtime --bench replay
 k6 run benchmarks/k6-smoke.js
 ```
 
-## 18. Failure scenarios
+## 19. Failure scenarios
 
 - Corrupt or tampered event-log record: readiness and replay fail with
   checksum, decode, contract-drift, or duplicate-record errors.
@@ -206,7 +259,7 @@ k6 run benchmarks/k6-smoke.js
 - Pix transfer above available balance: command is rejected before append.
 - Wrong tenant on read: returns no stream state for that tenant partition.
 
-## 19. Roadmap
+## 20. Roadmap
 
 - Replace local JSONL with a PostgreSQL-backed event store adapter.
 - Add outbox delivery for external consumers.
@@ -215,7 +268,7 @@ k6 run benchmarks/k6-smoke.js
 - Add JWT/OIDC and scoped API keys.
 - Add fuzzing for event-log parser boundaries.
 
-## 20. License
+## 21. License
 
 This repository is published under the MIT License. See
 [LICENSE.txt](LICENSE.txt).
