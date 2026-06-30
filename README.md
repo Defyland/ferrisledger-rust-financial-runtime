@@ -214,3 +214,11 @@ k6 run benchmarks/k6-smoke.js
 - Add OpenTelemetry trace export.
 - Add JWT/OIDC and scoped API keys.
 - Add fuzzing for event-log parser boundaries.
+
+## 20. License
+
+This repository is published under the MIT License. See
+[LICENSE.txt](LICENSE.txt).
+
+That keeps the runtime, replay evidence, and systems documentation reusable for
+study and internal experimentation.
